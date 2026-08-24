@@ -15,6 +15,7 @@ water-vapour fireplace. Setup happens once over **Bluetooth**; everyday control 
 - [[Firmware]] — what runs on the ESP32
 - [[Setup and Testing]] — how to build, flash, and test on Android and iOS
 - [[Status and Roadmap]] — what's done, what's left
+- [[Production Board Integration]] — connecting the app to the real high-voltage board
 
 ## The one-paragraph summary
 
