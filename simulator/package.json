@@ -1,0 +1,14 @@
+{
+  "name": "glowfire-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mock ESP32-S3 WD Cassette firmware: aedes MQTT broker + telemetry + manifest",
+  "main": "simulator.js",
+  "scripts": {
+    "start": "node simulator.js --sku KL-PRO"
+  },
+  "dependencies": {
+    "aedes": "^0.51.3",
+    "websocket-stream": "^5.5.2"
+  }
+}

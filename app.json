@@ -7,19 +7,59 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "de.kaminlicht.glowfire",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Glow Fire uses Bluetooth to set up and connect to your fireplace controller.",
+        "NSLocalNetworkUsageDescription": "Glow Fire connects to your fireplace over your local Wi-Fi network to control it.",
+        "NSBonjourServices": [
+          "_mqtt._tcp",
+          "_glowfire._tcp",
+          "_mqtt._tcp",
+          "_glowfire._tcp"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "de.kaminlicht.glowfire",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": [
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_NETWORK_STATE",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Glow Fire uses Bluetooth to provision and connect to your fireplace controller."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "66db1312-1058-4cc7-a27b-03a81434cac5"
+      }
+    },
+    "owner": "kaminlicht"
   }
 }
