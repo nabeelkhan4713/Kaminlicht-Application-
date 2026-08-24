@@ -13,7 +13,8 @@
  * serialNumber MUST match SERIAL_NO in the ESP32 firmware (topics are kl/{serialNumber}/*).
  */
 export const DEVICE = {
-  hosts: ['kl-glowfire.local', '192.168.188.94', '192.168.178.43', '192.168.188.63', '10.0.2.2'],
+  // 192.168.188.64 is the production ESP32-S3 board's static IP (firmware/glowfire_production_s3).
+  hosts: ['kl-glowfire.local', '192.168.188.94', '192.168.188.64', '192.168.178.43', '192.168.188.63', '10.0.2.2'],
   serialNumber: 'KL-2026-A3F92C',
   wsPort: 9001,
 };
