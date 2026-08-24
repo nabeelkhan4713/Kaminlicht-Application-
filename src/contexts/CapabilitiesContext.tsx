@@ -27,6 +27,16 @@ export function useHasExhaustFan(): boolean {
   return !!useCapabilities()?.exhaustFan.present;
 }
 
+/** Number of heater power stages (0 = none, 2 = the two 1000W units). */
+export function useHeaterStages(): number {
+  return useCapabilities()?.climate.stages ?? 0;
+}
+
+/** True only when the heater supports a target-temperature thermostat. */
+export function useHasThermostat(): boolean {
+  return !!useCapabilities()?.climate.thermostat;
+}
+
 export function useAudioVolumeSteps(): number {
   return useCapabilities()?.audio.volumeSteps ?? 10;
 }

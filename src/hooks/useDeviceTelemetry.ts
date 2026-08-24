@@ -45,6 +45,11 @@ export const useWaterLevel = () => useDeviceTelemetry((t) => t?.vapor.waterLevel
 export const useCurrentTemp = () => useDeviceTelemetry((t) => t?.climate?.currentTemp ?? null);
 
 export const useHumidity = () => useDeviceTelemetry((t) => t?.climate?.humidity ?? null);
+export const useTargetTemp = () => useDeviceTelemetry((t) => t?.climate?.targetTemp ?? null);
+export const useHeaterOn = () => useDeviceTelemetry((t) => t?.climate?.heaterOn ?? false);
+export const useHeaterStage = () => useDeviceTelemetry((t) => t?.climate?.stage ?? 1);
+/** True once the device has actually reported a climate section. */
+export const useClimateReporting = () => useDeviceTelemetry((t) => t?.climate != null);
 export const usePower = () => useDeviceTelemetry((t) => t?.power ?? false);
 export const useVaporOn = () => useDeviceTelemetry((t) => t?.vapor.on ?? false);
 export const useVaporIntensity = () => useDeviceTelemetry((t) => t?.vapor.intensity ?? 0);
