@@ -18,6 +18,13 @@
 // =====================================================
 //
 // ===== PIN MAP (compare with the ESP32-S3-WROOM-1 schematic) =====
+//
+//   HOW TO READ THE SCHEMATIC: every pin shows TWO numbers, e.g. "LED1 -17- IO9".
+//     - the plain number (17) is the PHYSICAL package pin  -> IGNORE for code
+//     - the "IOxx" number (IO9) is the GPIO                -> THIS is what the code uses
+//   Trap: LED1/2/3 sit at physical pins 17/18/19 but are GPIO IO9/IO10/IO11.
+//   The DFPlayer's IO17/IO18 are a DIFFERENT pin from physical-pin-17. Always match "IOxx".
+//
 //   Schematic net   GPIO   Function
 //   -------------   ----   -------------------------------
 //   DebugLED        IO2    Debug/status LED
