@@ -1,53 +1,49 @@
-# Production board firmware (ESP32-S3) + app control
+# Production firmware (ESP32-S3)
 
-This folder adds **app control (MQTT)** to the engineer's working production firmware,
-**without changing its tested high-voltage logic**. His built-in web page keeps working too.
+`glowfire_production_s3.ino` is the **dev firmware's approach** (BLE Wi-Fi provisioning +
+MQTT + DHCP + mDNS) with the **production board's pins and hardware**.
 
-## ⚠️ Safety first
+It is the same "language" the app speaks — **no static IP, no web page, no web login, no
+hardcoded Wi-Fi**. Setup is done from the app over Bluetooth, exactly like the dev board.
 
-This firmware switches **two 1000 W mains heaters**. Only flash and test it on the proper
-production board, with the person who handles that board safely. Test one function at a time.
+## ⚠️ Safety
 
-## How to assemble the sketch
+This firmware switches **two 1000 W mains heaters**. Flash and test only on the proper
+production board, with the person who handles it safely. Test one function at a time.
 
-Arduino compiles every `.ino` in a folder together, so we keep his file and add ours beside it.
+## Build
 
-1. Create a folder, e.g. `glowfire_production_s3`.
-2. Put the **engineer's firmware** in it, renamed to match the folder:
-   `glowfire_production_s3.ino`  (this is the "main" file).
-3. Put **`mqtt_bridge.ino`** (from this folder) in the same folder.
-4. Add **two lines** to the main file:
-   - in `setup()`, right after `connectWiFi();`  →  `mqttBridgeBegin();`
-   - in `loop()`, anywhere  →  `mqttBridgeLoop();`
-5. Install the **PicoMQTT** and **ArduinoJson (v7)** libraries (Library Manager).
-6. Board: **ESP32S3 Dev Module** · Partition: **Huge APP (3MB No OTA)**.
-7. Upload.
+- Board: **ESP32S3 Dev Module** · Partition: **Huge APP (3MB No OTA)**
+- Libraries (Library Manager): **PicoMQTT**, **ArduinoJson** (v7), **DFRobotDFPlayerMini**,
+  **DHT sensor library**. (ESP32 BLE is built into the core.)
+- Upload, open Serial Monitor at 115200.
 
-## What now works from the app
+## What it does
 
-| App | Maps to (his function/state) |
-|---|---|
-| Power on/off | `systemPowerOn/Off()` |
-| Vapour on/off + intensity | mist maker (`mistOn`, `mistLevel`, `applyMist`) |
-| Flame colour / brightness / on | all 3 LED strips (R/G swap handled) |
-| Audio on/off, volume, next/prev | `dfPlayer` (volume mapped 0–10 ⇄ 0–30) |
-| Heater on/off + stage 1/2 | the two 1000 W heaters (+ safety fan) |
-| Sleep timer | his timer (seconds → minutes) |
+- Boot → load saved Wi-Fi → connect (DHCP) → MQTT broker on :9001. No Wi-Fi → Bluetooth setup.
+- App controls: power, vapour (mist), flame lighting (all 3 WS2805 strips), audio (DFPlayer),
+  heater on/off + stage 1/2, sleep timer. Publishes telemetry (incl. real DHT temp/humidity)
+  every 2 s and a capability manifest.
+- Factory reset (app or BLE "RESET") wipes Wi-Fi and returns to Bluetooth setup.
 
-Telemetry (temp, humidity, states) is published to the app every 2 s. The web page + IR remote
-+ PCB buttons all keep working alongside the app.
+## Pins
 
-## Not yet exposed to the app (future)
+See the PIN MAP comment at the top of the `.ino`. **Match by the `IOxx` GPIO number**, not the
+physical package-pin number (e.g. LED1 is physical pin 17 but GPIO **IO9**).
 
-- The **2 blowers** individually, **per-LED-strip** control, and the **"fire level" scene (1–3)**.
-  These need new app controls — see `docs/Production Board Integration.md`.
+## Kept from the tested production code (hardware drivers only)
 
-## Security to fix before shipping 🔴
+The **WS2805 LED driver** and the mist/blower/heater output drivers are kept from the tested
+production firmware, because the production LEDs are **WS2805** (different chip from the dev
+board's WS2812) and need their own driver. These are hardware drivers — none of the web /
+static-IP / login code was carried over.
 
-- Remove the hardcoded Wi-Fi credentials (`WIFI_SSID`/`WIFI_PASS`) — provision instead.
-- Change the web login from `admin` / `0000` to a real password.
+## Not yet exposed to the app (future, additive)
 
-## Reaching the board from the app
+- The **2 blowers** and per-strip LED control (app drives all 3 strips together).
+- **IR remote + physical buttons** (wired on the PCB; not handled here yet).
+- The **"fire level" scene** (LEDs + mist + blowers + audio together).
 
-This board uses static IP **192.168.188.64** and advertises **kl-glowfire.local**. Both are in
-the app's host list (`src/config.ts`), and the board also reports its IP in the manifest.
+## Before shipping
+
+- Consider adding multi-network Wi-Fi (currently one saved network, like the dev board).
