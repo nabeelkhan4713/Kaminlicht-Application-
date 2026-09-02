@@ -415,6 +415,7 @@ void publishManifest() {
   au["present"] = true; au["volumeSteps"] = AUDIO_VOLUME_STEPS; au["trackControl"] = true;
   JsonObject fan = c["exhaustFan"].to<JsonObject>();
   fan["present"] = false; fan["speeds"].to<JsonArray>();
+  c["blowers"]["count"] = 2;                    // two flame/vapour blowers (B1, B2)
   JsonObject rc = c["remoteControl"].to<JsonObject>(); rc["present"] = false;
   c["hotelschaltung"] = false;
   JsonObject net = doc["network"].to<JsonObject>();
@@ -436,6 +437,12 @@ void publishTelemetry() {
   JsonObject v = doc["vapor"].to<JsonObject>();
   v["on"] = mistOn; v["intensity"] = mistLevel;
   // waterLevel is NOT sent: this board has no water-level sensor. The app shows "—".
+
+  JsonObject bl = doc["blowers"].to<JsonObject>();
+  JsonObject b1 = bl["blower1"].to<JsonObject>();
+  b1["on"] = blower1On; b1["speed"] = map(blower1Speed, 0, 255, 0, 100);
+  JsonObject b2 = bl["blower2"].to<JsonObject>();
+  b2["on"] = blower2On; b2["speed"] = map(blower2Speed, 0, 255, 0, 100);
 
   JsonObject lt = doc["lighting"].to<JsonObject>();
   JsonObject fl = lt["flame"].to<JsonObject>();
@@ -492,6 +499,24 @@ void onCommand(const char* topic, const char* payload) {
     } else if (!strcmp(action, "set_intensity")) {
       mistLevel = constrain((int)(doc["value"] | 0), 0, 5);
       mistOn = mistLevel > 0; systemOn = true; applyMist();
+    }
+
+  } else if (!strcmp(module, "blower")) {                      // two blowers, independent
+    int id = doc["value"]["id"] | 0;
+    bool* on = (id == 1) ? &blower1On : (id == 2) ? &blower2On : nullptr;
+    int* spd = (id == 1) ? &blower1Speed : (id == 2) ? &blower2Speed : nullptr;
+    if (on && spd) {
+      if (!strcmp(action, "power")) {
+        *on = doc["value"]["on"] | false;
+        if (*on && *spd == 0) *spd = 150;        // sensible default speed when switched on
+        systemOn = true;
+      } else if (!strcmp(action, "set_speed")) {
+        int pct = constrain((int)(doc["value"]["speed"] | 0), 0, 100);
+        *spd = map(pct, 0, 100, 0, 255);         // app 0-100% -> hardware 0-255
+        *on = pct > 0; systemOn = true;
+      }
+      applyBlowers();
+      Serial.printf("[blower] %d on=%d speed=%d\n", id, *on, *spd);
     }
 
   } else if (!strcmp(module, "lighting")) {                    // all 3 WS2805 strips

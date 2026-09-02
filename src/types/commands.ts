@@ -16,12 +16,15 @@ export interface Rgb {
 }
 
 export interface MQTTCommand {
-  module: 'system' | 'vapor' | 'lighting' | 'climate' | 'audio' | 'exhaustFan' | 'timer';
+  module: 'system' | 'vapor' | 'lighting' | 'climate' | 'audio' | 'exhaustFan' | 'blower' | 'timer';
   action: string;
   value: unknown;
   zone?: LightZone;
   msgId: string;
 }
+
+/** The two flame/vapour blowers (same job; controlled independently). */
+export type BlowerId = 1 | 2;
 
 /**
  * RFC4122-style v4 id. Pure JS so it needs no native crypto module and no rebuild.
@@ -93,6 +96,14 @@ export const buildTrackCmd = (direction: 'next' | 'prev') =>
 // ---- Exhaust Fan (FR-FAN) ----
 export const buildFanSpeedCmd = (speed: FanSpeed) =>
   cmd({ module: 'exhaustFan', action: 'set_speed', value: speed });
+
+// ---- Blowers (FR-BLW) — two blowers, same job, controlled independently ----
+export const buildBlowerPowerCmd = (id: BlowerId, on: boolean) =>
+  cmd({ module: 'blower', action: 'power', value: { id, on } });
+export const buildBlowerSpeedCmd = (id: BlowerId, speed: number) => {
+  assertRange('blower speed', speed, 0, 100);
+  return cmd({ module: 'blower', action: 'set_speed', value: { id, speed } });
+};
 
 // ---- Timer (FR-TMR) — sleep in seconds, 0–28800 ----
 export const buildSleepTimerCmd = (seconds: number) => {

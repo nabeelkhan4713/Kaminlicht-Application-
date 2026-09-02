@@ -59,6 +59,12 @@ export const useWifiRssi = () => useDeviceTelemetry((t) => t?.wifiRssi ?? null);
 export const useSleepRemaining = () =>
   useDeviceTelemetry((t) => (t?.timer?.sleepActive ? t.timer.sleepRemaining : null));
 
+// ---- Blowers (FR-BLW) — primitive selectors, re-render safe ----
+export const useBlower1On = () => useDeviceTelemetry((t) => t?.blowers?.blower1?.on ?? false);
+export const useBlower1Speed = () => useDeviceTelemetry((t) => t?.blowers?.blower1?.speed ?? 0);
+export const useBlower2On = () => useDeviceTelemetry((t) => t?.blowers?.blower2?.on ?? false);
+export const useBlower2Speed = () => useDeviceTelemetry((t) => t?.blowers?.blower2?.speed ?? 0);
+
 // ---- Audio (FR-AUD) ----
 export const useAudioOn = () => useDeviceTelemetry((t) => t?.audio?.on ?? false);
 export const useAudioVolume = () => useDeviceTelemetry((t) => t?.audio?.volume ?? 0);

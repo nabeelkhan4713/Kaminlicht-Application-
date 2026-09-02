@@ -27,6 +27,11 @@ export function useHasExhaustFan(): boolean {
   return !!useCapabilities()?.exhaustFan.present;
 }
 
+/** How many flame/vapour blowers are fitted (0 = none, hides the blower controls). */
+export function useBlowerCount(): number {
+  return useCapabilities()?.blowers.count ?? 0;
+}
+
 /** Number of heater power stages (0 = none, 2 = the two 1000W units). */
 export function useHeaterStages(): number {
   return useCapabilities()?.climate.stages ?? 0;

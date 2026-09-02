@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useConnectionState, usePublishWithAck, useStableOffline } from '../contexts/DeviceContext';
+import { useBlowerCount } from '../contexts/CapabilitiesContext';
 import {
   usePower,
   useVaporOn,
@@ -14,12 +15,19 @@ import {
   useHumidity,
   useWifiRssi,
   useSleepRemaining,
+  useBlower1On,
+  useBlower1Speed,
+  useBlower2On,
+  useBlower2Speed,
 } from '../hooks/useDeviceTelemetry';
 import {
   buildPowerCmd,
   buildSleepTimerCmd,
   buildVaporPowerCmd,
   buildVaporIntensityCmd,
+  buildBlowerPowerCmd,
+  buildBlowerSpeedCmd,
+  type BlowerId,
   type MQTTCommand,
 } from '../types/commands';
 
@@ -66,9 +74,66 @@ function TimeUnitControl({
   );
 }
 
+const BLOWER_SPEEDS: { label: string; value: number }[] = [
+  { label: 'Low', value: 35 },
+  { label: 'Med', value: 67 },
+  { label: 'High', value: 100 },
+];
+
+function BlowerRow({
+  id,
+  on,
+  speed,
+  disabled,
+  onToggle,
+  onSpeed,
+}: {
+  id: BlowerId;
+  on: boolean;
+  speed: number;
+  disabled: boolean;
+  onToggle: (next: boolean) => void;
+  onSpeed: (pct: number) => void;
+}) {
+  return (
+    <View style={styles.blowerRow}>
+      <View style={styles.rowBetween}>
+        <Text style={styles.label}>Blower {id}</Text>
+        <TouchableOpacity
+          disabled={disabled}
+          style={[styles.toggle, on && styles.toggleOn, disabled && styles.disabled]}
+          onPress={() => onToggle(!on)}
+        >
+          <Text style={styles.toggleText}>{on ? 'ON' : 'OFF'}</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.steps}>
+        {BLOWER_SPEEDS.map((lvl) => {
+          const active = on && Math.abs(speed - lvl.value) <= 16;
+          return (
+            <TouchableOpacity
+              key={lvl.label}
+              disabled={disabled || !on}
+              style={[styles.step, active && styles.stepActive, (disabled || !on) && styles.disabled]}
+              onPress={() => onSpeed(lvl.value)}
+            >
+              <Text style={[styles.stepText, active && styles.stepTextActive]}>{lvl.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const offline = useStableOffline();
   const connectionState = useConnectionState();
+  const blowerCount = useBlowerCount();
+  const blower1On = useBlower1On();
+  const blower1Speed = useBlower1Speed();
+  const blower2On = useBlower2On();
+  const blower2Speed = useBlower2Speed();
   const [pendingCommand, setPendingCommand] = useState<string | null>(null);
   const [timerHours, setTimerHours] = useState(0);
   const [timerMinutes, setTimerMinutes] = useState(15);
@@ -119,6 +184,11 @@ export default function HomeScreen() {
       setPendingCommand(null);
     }
   };
+
+  const toggleBlower = (id: BlowerId, on: boolean) =>
+    void sendCommand(buildBlowerPowerCmd(id, on), `blower ${id} ${on ? 'on' : 'off'}`);
+  const setBlowerSpeed = (id: BlowerId, pct: number) =>
+    void sendCommand(buildBlowerSpeedCmd(id, pct), `blower ${id} speed`);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -227,6 +297,31 @@ export default function HomeScreen() {
           ))}
         </View>
       </View>
+
+      {blowerCount > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Blowers</Text>
+          <Text style={styles.helperText}>Push the vapour up through the flame. Run one or both.</Text>
+          <BlowerRow
+            id={1}
+            on={blower1On}
+            speed={blower1Speed}
+            disabled={controlsDisabled}
+            onToggle={(v) => toggleBlower(1, v)}
+            onSpeed={(p) => setBlowerSpeed(1, p)}
+          />
+          {blowerCount > 1 && (
+            <BlowerRow
+              id={2}
+              on={blower2On}
+              speed={blower2Speed}
+              disabled={controlsDisabled}
+              onToggle={(v) => toggleBlower(2, v)}
+              onSpeed={(p) => setBlowerSpeed(2, p)}
+            />
+          )}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -275,6 +370,7 @@ const styles = StyleSheet.create({
   toggle: { paddingVertical: 6, paddingHorizontal: 18, borderRadius: 20, backgroundColor: '#d4d4d8' },
   toggleOn: { backgroundColor: '#ea580c' },
   toggleText: { color: '#fff', fontWeight: '700' },
+  blowerRow: { gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#e4e4e7' },
   steps: { flexDirection: 'row', gap: 8, marginTop: 6 },
   step: { flex: 1, aspectRatio: 1, borderRadius: 10, backgroundColor: '#e4e4e7', alignItems: 'center', justifyContent: 'center' },
   stepActive: { backgroundColor: '#ea580c' },

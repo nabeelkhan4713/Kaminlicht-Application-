@@ -42,6 +42,10 @@ export const ManifestSchema = z.object({
         speeds: z.array(FanSpeedEnum).default([]),
       })
       .default({ present: false, speeds: [] }),
+    // Flame/vapour blowers (same job, controlled independently). count = how many are fitted.
+    blowers: z
+      .object({ count: z.number().int().min(0).max(4).default(0) })
+      .default({ count: 0 }),
     remoteControl: z
       .object({
         present: z.boolean().default(false),

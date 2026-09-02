@@ -66,6 +66,14 @@ export const TelemetrySchema = z.object({
     })
     .optional(),
 
+  // Flame/vapour blowers. speed is a percentage (0-100). Each fitted blower is reported.
+  blowers: z
+    .object({
+      blower1: z.object({ on: z.boolean(), speed: z.number().int().min(0).max(100) }).optional(),
+      blower2: z.object({ on: z.boolean(), speed: z.number().int().min(0).max(100) }).optional(),
+    })
+    .optional(),
+
   timer: z
     .object({
       sleepActive: z.boolean(),
