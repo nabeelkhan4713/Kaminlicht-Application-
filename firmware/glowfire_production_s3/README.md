@@ -22,8 +22,10 @@ production board, with the person who handles it safely. Test one function at a 
 
 - Boot → load saved Wi-Fi → connect (DHCP) → MQTT broker on :9001. No Wi-Fi → Bluetooth setup.
 - App controls: power, vapour (mist), flame lighting (all 3 WS2805 strips), audio (DFPlayer),
-  heater on/off + stage 1/2, sleep timer. Publishes telemetry (incl. real DHT temp/humidity)
-  every 2 s and a capability manifest.
+  heater on/off + stage 1/2, sleep timer. Publishes telemetry + a capability manifest every 2 s.
+- **IR remote** (codes confirmed on the real remote): On/Off, Flame Up/Down (fire level 1-3 =
+  brightness + mist + blowers, keeps the chosen colour), Volume (cycles 10/20/30).
+- Temp/humidity/water level are sent **only when a real sensor responds** — never placeholders.
 - Factory reset (app or BLE "RESET") wipes Wi-Fi and returns to Bluetooth setup.
 
 ## Pins
@@ -41,8 +43,10 @@ static-IP / login code was carried over.
 ## Not yet exposed to the app (future, additive)
 
 - The **2 blowers** and per-strip LED control (app drives all 3 strips together).
-- **IR remote + physical buttons** (wired on the PCB; not handled here yet).
-- The **"fire level" scene** (LEDs + mist + blowers + audio together).
+- **Physical PCB buttons** (wired on IO5; not handled yet — the IR remote IS handled).
+- The **"fire level" scene** in the app (the remote uses it; the app doesn't expose it yet).
+- **Remote volume up/down/mute** — current remote has one volume button (cycles up). Deferred
+  to a new remote with dedicated buttons.
 
 ## Before shipping
 
