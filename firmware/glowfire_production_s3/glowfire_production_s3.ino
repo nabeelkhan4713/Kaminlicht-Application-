@@ -357,10 +357,10 @@ void factoryReset() { clearSavedWifi(); restartPending = true; restartAtMs = mil
 void applyFireLevel(int level) {
   fireLevel = constrain(level, 1, 3);
   systemOn = true;
-  for (int i = 0; i < 3; i++) {                 // warm orange on all strips (R/G swapped)
-    ledStates[i].on = true; ledStates[i].red = 80; ledStates[i].green = 255;
-    ledStates[i].blue = 0; ledStates[i].warmWhite = 0; ledStates[i].coolWhite = 0;
-  }
+  // Keep whatever colour the app/presets already set — the remote's flame up/down
+  // changes only the fire INTENSITY (brightness + mist + blowers), never the colour.
+  // (The default orange applies only if no colour was ever chosen.)
+  for (int i = 0; i < 3; i++) ledStates[i].on = true;
   blower1On = true; blower2On = true; mistOn = true;
   int bright = fireLevel == 1 ? 25 : fireLevel == 2 ? 60 : 100;
   int bspeed = fireLevel == 1 ? 90 : fireLevel == 2 ? 170 : 255;
