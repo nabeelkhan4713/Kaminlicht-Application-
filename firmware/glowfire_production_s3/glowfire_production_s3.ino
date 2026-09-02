@@ -53,6 +53,7 @@
 #include <DFRobotDFPlayerMini.h>
 #include <DHT.h>
 #include <esp32-hal-rmt.h>
+#include <IRremote.hpp>
 
 // ---------- CONFIG ----------
 const char* SERIAL_NO       = "KL-2026-A3F92C";    // MUST match the app's serialNumber
@@ -144,6 +145,15 @@ int  audioTrackIndex = 0;
 DHT dht(DHT_PIN, DHT_TYPE);
 float temperatureC = NAN, humidityPercent = NAN;
 unsigned long lastDhtRead = 0;
+
+// ---------- IR remote (net RECEIVERD -> IO6). Codes confirmed on the real remote. ----------
+#define IR_RECEIVE_PIN     6
+#define IR_POWER_CODE      0xFB047F80UL   // On/Off
+#define IR_FIRE_UP_CODE    0xE51A7F80UL   // Flame up
+#define IR_FIRE_DOWN_CODE  0xFA057F80UL   // Flame down
+#define IR_VOLUME_CODE     0xE6197F80UL   // Volume (cycles 10 -> 20 -> 30)
+int fireLevel = 0;                        // 0 = off, 1..3 scene levels
+int volumePreset = 0;                     // 0 = none, 1/2/3 = vol 10/20/30
 
 // ---------- Wi-Fi provisioning (same as dev firmware) ----------
 struct CachedWifiNetwork { String ssid; int rssi; int secure; };
@@ -342,6 +352,48 @@ void setSleepTimer(uint32_t seconds) {
 }
 void factoryReset() { clearSavedWifi(); restartPending = true; restartAtMs = millis() + 2500; }
 
+// ---------- IR remote handling ----------
+// A "fire level" scene: one press sets flame colour, brightness, mist and blowers together.
+void applyFireLevel(int level) {
+  fireLevel = constrain(level, 1, 3);
+  systemOn = true;
+  for (int i = 0; i < 3; i++) {                 // warm orange on all strips (R/G swapped)
+    ledStates[i].on = true; ledStates[i].red = 80; ledStates[i].green = 255;
+    ledStates[i].blue = 0; ledStates[i].warmWhite = 0; ledStates[i].coolWhite = 0;
+  }
+  blower1On = true; blower2On = true; mistOn = true;
+  int bright = fireLevel == 1 ? 25 : fireLevel == 2 ? 60 : 100;
+  int bspeed = fireLevel == 1 ? 90 : fireLevel == 2 ? 170 : 255;
+  mistLevel     = fireLevel == 1 ? 2  : fireLevel == 2 ? 4   : 5;
+  for (int i = 0; i < 3; i++) ledStates[i].brightnessPercent = bright;
+  blower1Speed = bspeed; blower2Speed = bspeed;
+  applyAllOutputs();
+  if (!isPlaying) { dfPlayer.start(); isPlaying = true; }
+  Serial.printf("[ir] fire level %d\n", fireLevel);
+}
+void remoteFireUp()   { applyFireLevel((!systemOn || fireLevel < 1) ? 1 : (fireLevel < 3 ? fireLevel + 1 : 3)); }
+void remoteFireDown() { applyFireLevel((!systemOn || fireLevel < 1) ? 1 : (fireLevel > 1 ? fireLevel - 1 : 1)); }
+void cycleVolume() {
+  volumePreset = (volumePreset >= 3) ? 1 : volumePreset + 1;
+  volumeLevel = volumePreset == 1 ? 10 : volumePreset == 2 ? 20 : 30;
+  dfPlayer.volume(volumeLevel);
+  Serial.printf("[ir] volume %d\n", volumeLevel);
+}
+void checkIRRemote() {
+  if (!IrReceiver.decode()) return;
+  if (!(IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT)) {   // ignore held-button repeats
+    uint32_t code = (uint32_t)IrReceiver.decodedIRData.decodedRawData;
+    switch (code) {
+      case IR_POWER_CODE:     if (systemOn) systemPowerOff(); else applyFireLevel(1); break;
+      case IR_FIRE_UP_CODE:   remoteFireUp();   break;
+      case IR_FIRE_DOWN_CODE: remoteFireDown(); break;
+      case IR_VOLUME_CODE:    cycleVolume();    break;
+      default: Serial.printf("[ir] unknown 0x%08X\n", code); break;
+    }
+  }
+  IrReceiver.resume();
+}
+
 // ---------- MQTT publishers ----------
 void publishAck(const char* msgId, bool ok = true) {
   if (!msgId || !strlen(msgId)) return;
@@ -382,7 +434,8 @@ void publishTelemetry() {
   doc["power"] = systemOn;
 
   JsonObject v = doc["vapor"].to<JsonObject>();
-  v["on"] = mistOn; v["intensity"] = mistLevel; v["waterLevel"] = "full";
+  v["on"] = mistOn; v["intensity"] = mistLevel;
+  // waterLevel is NOT sent: this board has no water-level sensor. The app shows "—".
 
   JsonObject lt = doc["lighting"].to<JsonObject>();
   JsonObject fl = lt["flame"].to<JsonObject>();
@@ -395,9 +448,10 @@ void publishTelemetry() {
   JsonObject clm = doc["climate"].to<JsonObject>();
   clm["heaterOn"] = (heater1On || heater2On || smallHeaterOn);
   clm["stage"] = heater2On ? 2 : 1;
-  clm["targetTemp"] = 21;
-  clm["currentTemp"] = isnan(temperatureC) ? 20.0 : temperatureC;
-  clm["humidity"] = isnan(humidityPercent) ? 45.0 : humidityPercent;
+  // targetTemp is NOT sent: these heaters are on/off + stage, no thermostat.
+  // currentTemp/humidity are sent ONLY if a real DHT sensor responds — never placeholders.
+  if (!isnan(temperatureC)) clm["currentTemp"] = temperatureC;
+  if (!isnan(humidityPercent)) clm["humidity"] = humidityPercent;
 
   JsonObject au = doc["audio"].to<JsonObject>();
   au["on"] = isPlaying;
@@ -580,6 +634,7 @@ void setup() {
   initWs2805(); applyLedStrips();
   dht.begin();
   audioBegin();
+  IrReceiver.begin(IR_RECEIVE_PIN, DISABLE_LED_FEEDBACK);   // physical remote
   bootMs = millis();
 
   WifiCred selected;
@@ -602,6 +657,7 @@ void loop() {
   if (sleepTimerActive && (long)(millis() - sleepTimerEndMs) >= 0) {
     sleepTimerActive = false; sleepTimerEndMs = 0; systemPowerOff();
   }
+  checkIRRemote();   // physical remote works alongside the app
   if (mqttStarted) {
     mqtt.loop();
     if (millis() - lastTlm >= 2000) {

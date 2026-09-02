@@ -184,15 +184,15 @@
   },
   "active": "985828a60e70b405",
   "lastOpenFiles": [
-    "Home.md.tmp.14244.0c603741cde9",
-    "Production Board Integration.md",
-    "Architecture.md",
-    "Features.md",
-    "Home.md",
     "Status and Roadmap.md",
-    "Setup and Testing.md",
-    "Provisioning.md",
+    "Home.md",
     "MQTT Contract.md",
-    "Firmware.md"
+    "Production Board Integration.md",
+    "Firmware.md",
+    "Architecture.md",
+    "Home.md.tmp.14244.0c603741cde9",
+    "Features.md",
+    "Setup and Testing.md",
+    "Provisioning.md"
   ]
 }

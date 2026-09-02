@@ -27,7 +27,9 @@ export const TelemetrySchema = z.object({
   vapor: z.object({
     on: z.boolean(),
     intensity: z.number().int().min(0).max(6),
-    waterLevel: z.enum(['full', 'medium', 'low', 'empty']), // App blocks vapour when empty (FR-VAP-005).
+    // Only reported when a water-level sensor is fitted. Absent = unknown (app shows "—",
+    // does not block vapour). Never send a placeholder. (FR-VAP-005)
+    waterLevel: z.enum(['full', 'medium', 'low', 'empty']).optional(),
   }),
 
   lighting: z
@@ -40,9 +42,11 @@ export const TelemetrySchema = z.object({
     .object({
       heaterOn: z.boolean(),
       stage: z.number().int().min(1).max(2).optional(), // omitted when heater absent
-      targetTemp: z.number(),
-      currentTemp: z.number().min(-10).max(50),
-      humidity: z.number().min(0).max(100),
+      // The next three are reported ONLY when the matching sensor/thermostat is fitted.
+      // Absent = unknown (app shows "—"). The firmware must never send a placeholder.
+      targetTemp: z.number().optional(),
+      currentTemp: z.number().min(-10).max(50).optional(),
+      humidity: z.number().min(0).max(100).optional(),
     })
     .optional(),
 
