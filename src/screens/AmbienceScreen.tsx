@@ -20,6 +20,7 @@ import { useDeviceTelemetry } from '../hooks/useDeviceTelemetry';
 import { buildBrightnessCmd, buildColorCmd, buildZonePowerCmd, type MQTTCommand } from '../types/commands';
 import { ColorPreset, ColorPresetStorage } from '../services/ColorPresetStorage';
 import ColorWheel from '../components/ColorWheel';
+import Slider from '../components/Slider';
 import { hsvToRgb, rgbToHex, rgbToHue, type RgbColor } from '../utils/colors';
 import type { LightZone } from '../schemas/manifest.schema';
 
@@ -147,8 +148,9 @@ export default function AmbienceScreen() {
   });
   const deviceBrightness = deviceColor?.brightness ?? 85;
   const deviceLightOn = deviceColor?.on ?? false;
-  const telemetryBrightnessLevel = Math.round((deviceBrightness / 100) * BRIGHTNESS_LEVELS);
-  const brightnessLevel = brightnessOverride ?? telemetryBrightnessLevel;
+  // Brightness is now a smooth 0-100% value. The override is what the user is dragging;
+  // it's cleared once the device reports the same value back.
+  const brightnessPercent = brightnessOverride ?? deviceBrightness;
 
   useEffect(() => {
     if (zones.length === 0) return;
@@ -163,10 +165,10 @@ export default function AmbienceScreen() {
   }, [deviceColor?.r, deviceColor?.g, deviceColor?.b]);
 
   useEffect(() => {
-    if (brightnessOverride !== null && telemetryBrightnessLevel === brightnessOverride) {
+    if (brightnessOverride !== null && Math.abs(deviceBrightness - brightnessOverride) <= 2) {
       setBrightnessOverride(null);
     }
-  }, [brightnessOverride, telemetryBrightnessLevel]);
+  }, [brightnessOverride, deviceBrightness]);
 
   useEffect(() => {
     const key = manifest?.serialNumber ?? 'default';
@@ -201,11 +203,10 @@ export default function AmbienceScreen() {
     publish(buildColorCmd(selectedZone, selectedColor));
   };
 
-  const applyBrightnessLevel = (level: number) => {
-    const nextLevel = Math.max(0, Math.min(BRIGHTNESS_LEVELS, level));
-    setBrightnessOverride(nextLevel);
-    const brightness = Math.round((nextLevel / BRIGHTNESS_LEVELS) * 100);
-    publish(buildBrightnessCmd(selectedZone, brightness));
+  const applyBrightness = (percent: number) => {
+    const value = Math.round(Math.max(0, Math.min(100, percent)));
+    setBrightnessOverride(value);
+    publish(buildBrightnessCmd(selectedZone, value));
   };
 
   const toggleLightPower = () => {
@@ -283,11 +284,17 @@ export default function AmbienceScreen() {
       </TouchableOpacity>
 
       <Text style={styles.sectionTitle}>Brightness</Text>
-      <LevelSlider
-        level={brightnessLevel}
-        onChange={applyBrightnessLevel}
-        onDragStart={() => setSliderDragging(true)}
-        onDragEnd={() => setSliderDragging(false)}
+      <Slider
+        value={brightnessPercent}
+        min={0}
+        max={100}
+        disabled={connectionState !== 'connected'}
+        formatValue={(v) => `${Math.round(v)}%`}
+        onChange={() => setSliderDragging(true)}
+        onCommit={(v) => {
+          setSliderDragging(false);
+          applyBrightness(v);
+        }}
       />
 
       <Text style={styles.sectionTitle}>Save preset</Text>

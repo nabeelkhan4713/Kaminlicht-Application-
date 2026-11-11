@@ -22,11 +22,11 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useConnectionState, usePublishWithAck, useStableOffline } from '../contexts/DeviceContext';
 import { useBlowerCount } from '../contexts/CapabilitiesContext';
+import Slider from '../components/Slider';
 // READ hooks: these receive the board's live status (telemetry) and show it on screen.
 import {
   usePower,            // is the fireplace powered on?
   useVaporOn,          // is the mist/vapour on?
-  useVaporIntensity,   // vapour level 1-6
   useWaterLevel,       // water in tank ("—" when no sensor fitted)
   useCurrentTemp,      // temperature ("—" when no sensor fitted)
   useHumidity,         // humidity ("—" when no sensor fitted)
@@ -92,12 +92,6 @@ function TimeUnitControl({
   );
 }
 
-const BLOWER_SPEEDS: { label: string; value: number }[] = [
-  { label: 'Low', value: 35 },
-  { label: 'Med', value: 67 },
-  { label: 'High', value: 100 },
-];
-
 function BlowerRow({
   id,
   on,
@@ -125,21 +119,14 @@ function BlowerRow({
           <Text style={styles.toggleText}>{on ? 'ON' : 'OFF'}</Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.steps}>
-        {BLOWER_SPEEDS.map((lvl) => {
-          const active = on && Math.abs(speed - lvl.value) <= 16;
-          return (
-            <TouchableOpacity
-              key={lvl.label}
-              disabled={disabled || !on}
-              style={[styles.step, active && styles.stepActive, (disabled || !on) && styles.disabled]}
-              onPress={() => onSpeed(lvl.value)}
-            >
-              <Text style={[styles.stepText, active && styles.stepTextActive]}>{lvl.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <Slider
+        value={speed}
+        min={0}
+        max={100}
+        disabled={disabled || !on}
+        formatValue={(v) => `${Math.round(v)}%`}
+        onCommit={onSpeed}
+      />
     </View>
   );
 }
@@ -160,7 +147,6 @@ export default function HomeScreen() {
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
   const power = usePower();
   const vaporOn = useVaporOn();
-  const intensity = useVaporIntensity();
   const water = useWaterLevel();
   const tempC = useCurrentTemp();
   const humidity = useHumidity();
@@ -291,7 +277,8 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* VAPOUR card -> vapor/power + vapor/set_intensity -> Arduino applyMist() -> GPIO 12 */}
+      {/* VAPOUR card -> on/off only. ON runs the mist at full; OFF turns it off.
+          ON sends vapor/set_intensity(6) (max); OFF sends vapor/power(false). */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Vapour</Text>
         {waterEmpty && <Text style={styles.warn}>Tank empty - refill to use vapour.</Text>}
@@ -300,23 +287,14 @@ export default function HomeScreen() {
           <TouchableOpacity
             disabled={waterEmpty || controlsDisabled}
             style={[styles.toggle, vaporOn && styles.toggleOn, (waterEmpty || controlsDisabled) && styles.disabled]}
-            onPress={() => void sendCommand(buildVaporPowerCmd(!vaporOn), vaporOn ? 'flame effect off' : 'flame effect on')}
+            onPress={() =>
+              vaporOn
+                ? void sendCommand(buildVaporPowerCmd(false), 'flame effect off')
+                : void sendCommand(buildVaporIntensityCmd(6), 'flame effect on')
+            }
           >
             <Text style={styles.toggleText}>{vaporOn ? 'ON' : 'OFF'}</Text>
           </TouchableOpacity>
-        </View>
-        <Text style={[styles.label, { marginTop: 12 }]}>Intensity {intensity}/6</Text>
-        <View style={styles.steps}>
-          {[1, 2, 3, 4, 5, 6].map((n) => (
-            <TouchableOpacity
-              key={n}
-              disabled={waterEmpty || controlsDisabled}
-              style={[styles.step, intensity >= n && styles.stepActive, (waterEmpty || controlsDisabled) && styles.disabled]}
-              onPress={() => void sendCommand(buildVaporIntensityCmd(n), `intensity ${n}`)}
-            >
-              <Text style={[styles.stepText, intensity >= n && styles.stepTextActive]}>{n}</Text>
-            </TouchableOpacity>
-          ))}
         </View>
       </View>
 
