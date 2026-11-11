@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useConnection, useManifest, usePublishWithAck } from '../contexts/DeviceContext';
+import { useConnection, useManifest, useMarkReconnecting, usePublishWithAck } from '../contexts/DeviceContext';
 import { buildFactoryResetCmd } from '../types/commands';
 import ProvisioningScreen from './ProvisioningScreen';
 
@@ -13,6 +13,7 @@ export default function SettingsScreen() {
   const manifest = useManifest();
   const online = useConnection();
   const publishWithAck = usePublishWithAck();
+  const markReconnecting = useMarkReconnecting();
   const [setupOpen, setSetupOpen] = useState(false);
   const [resetInProgress, setResetInProgress] = useState(false);
 
@@ -37,6 +38,9 @@ export default function SettingsScreen() {
             setResetInProgress(true);
             try {
               await publishWithAck(buildFactoryResetCmd(), 6000);
+              // The board is about to reboot into setup mode and go silent — reflect that
+              // immediately so the UI never flashes "connected" during the reboot.
+              markReconnecting();
               setTimeout(() => setSetupOpen(true), 2500);
             } catch (error) {
               setResetInProgress(false);

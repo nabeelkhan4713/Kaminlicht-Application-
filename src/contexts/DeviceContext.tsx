@@ -85,6 +85,23 @@ export function DeviceProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Telemetry watchdog. The board publishes every 2s; the MQTT socket only reports a dead
+  // link after the keepalive window. So after a factory reset (board reboots and goes silent)
+  // the UI would otherwise keep showing "connected" until keepalive expires. Here: if we were
+  // connected but 3+ ticks are missed, downgrade to reconnecting and drop the stale payload —
+  // the UI reflects reality within seconds, independent of the MQTT keepalive.
+  useEffect(() => {
+    const TELEMETRY_TIMEOUT_MS = 6000;
+    const id = setInterval(() => {
+      const s = store.getSnapshot();
+      if (s.lastTelemetryAt != null && Date.now() - s.lastTelemetryAt > TELEMETRY_TIMEOUT_MS) {
+        store.set({ online: false, connectionState: 'reconnecting', telemetry: null, lastTelemetryAt: null });
+      }
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return <DeviceStoreContext.Provider value={store}>{children}</DeviceStoreContext.Provider>;
 }
 
@@ -154,6 +171,19 @@ export function usePublishWithAck(): (command: MQTTCommand, timeoutMs?: number) 
   return useCallback(
     (command: MQTTCommand, timeoutMs?: number) => mqttService.publishCommandWithAck(command, timeoutMs),
     [],
+  );
+}
+
+/**
+ * Immediately mark the fireplace as disconnected + drop stale readings. Call this right after
+ * an action we KNOW makes the board reboot (e.g. factory reset), so the UI stops showing
+ * "connected" at once instead of waiting for the watchdog/keepalive to notice the silence.
+ */
+export function useMarkReconnecting(): () => void {
+  const store = useDeviceStore();
+  return useCallback(
+    () => store.set({ online: false, connectionState: 'reconnecting', telemetry: null, lastTelemetryAt: null }),
+    [store],
   );
 }
 

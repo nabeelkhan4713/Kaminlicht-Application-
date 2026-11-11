@@ -53,9 +53,14 @@ export class MQTTService {
     // host is reachable on the current network — no single hardcoded IP.
     this.client = mqtt.connect({
       servers: hosts.map((host) => ({ host, port: wsPort, protocol: 'ws' as const })),
-      keepalive: 60, // higher = fewer pings, more tolerant of a laggy/weak link
+      // keepalive drives how fast a dead link is noticed natively (~1.5x this). Over local
+      // Wi-Fi 20s is plenty and detects a rebooted board (factory reset) far sooner than 60s.
+      keepalive: 20,
       reconnectPeriod: 2000, // back-off floor (SRS §3.2.1)
-      connectTimeout: 30000, // wait longer for CONNACK on a weak Wi-Fi signal
+      // mqtt.js tries ONE host from `servers` per attempt and only cycles to the next after
+      // this timeout. 30s meant a board on a later host (or that just came online) took up to
+      // a minute to find. 8s is ample for a local CONNACK and makes reconnection near-instant.
+      connectTimeout: 8000,
       clean: true,
     });
 

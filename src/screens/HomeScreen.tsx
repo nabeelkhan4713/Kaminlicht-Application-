@@ -1,32 +1,50 @@
 /**
- * Home screen - Status Card + Power + Vapour + Sleep Timer control.
- * Reads live values through telemetry hooks; dispatches through confirmed MQTT commands.
+ * Home screen - Status Card + Power + Vapour + Blowers + Sleep Timer.
+ *
+ * ===== HOW THIS SCREEN TALKS TO THE FIREPLACE (Arduino) =====
+ * Two kinds of lines connect to the board (firmware: glowfire_production_s3.ino):
+ *
+ *   1) READ  — the "use...()" hooks below receive the board's live status
+ *              (what's on, temperature, etc.) every 2 seconds and show it on screen.
+ *   2) SEND  — the "build...Cmd(...)" calls send a command to the board; the board's
+ *              onCommand() runs the matching apply...() function and drives a pin.
+ *
+ *   Button on screen            Command sent          Arduino does -> pin
+ *   --------------------------  --------------------  ------------------------
+ *   Turn On / Off               system/power          systemPowerOn/Off -> all
+ *   Vapour ON/OFF + Intensity   vapor/*               applyMist()       -> GPIO 12
+ *   Blower 1/2 on/off + speed   blower/*              applyBlowers()    -> GPIO 14/15
+ *   Sleep timer                 timer/set_sleep       software timer
+ *
+ * The app has NO pins - it only sends messages. Pins live in the .ino firmware.
  */
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useConnectionState, usePublishWithAck, useStableOffline } from '../contexts/DeviceContext';
 import { useBlowerCount } from '../contexts/CapabilitiesContext';
+// READ hooks: these receive the board's live status (telemetry) and show it on screen.
 import {
-  usePower,
-  useVaporOn,
-  useVaporIntensity,
-  useWaterLevel,
-  useCurrentTemp,
-  useHumidity,
-  useWifiRssi,
-  useSleepRemaining,
-  useBlower1On,
-  useBlower1Speed,
-  useBlower2On,
-  useBlower2Speed,
+  usePower,            // is the fireplace powered on?
+  useVaporOn,          // is the mist/vapour on?
+  useVaporIntensity,   // vapour level 1-6
+  useWaterLevel,       // water in tank ("—" when no sensor fitted)
+  useCurrentTemp,      // temperature ("—" when no sensor fitted)
+  useHumidity,         // humidity ("—" when no sensor fitted)
+  useWifiRssi,         // Wi-Fi signal strength
+  useSleepRemaining,   // sleep-timer countdown
+  useBlower1On,        // blower 1 on?
+  useBlower1Speed,     // blower 1 speed
+  useBlower2On,        // blower 2 on?
+  useBlower2Speed,     // blower 2 speed
 } from '../hooks/useDeviceTelemetry';
+// SEND builders: each makes a command the board understands; sendCommand() delivers it.
 import {
-  buildPowerCmd,
-  buildSleepTimerCmd,
-  buildVaporPowerCmd,
-  buildVaporIntensityCmd,
-  buildBlowerPowerCmd,
-  buildBlowerSpeedCmd,
+  buildPowerCmd,          // -> system/power      (Arduino: systemPowerOn/Off)
+  buildSleepTimerCmd,     // -> timer/set_sleep   (Arduino: sleep timer)
+  buildVaporPowerCmd,     // -> vapor/power       (Arduino: applyMist -> GPIO 12)
+  buildVaporIntensityCmd, // -> vapor/set_intensity (Arduino: applyMist -> GPIO 12)
+  buildBlowerPowerCmd,    // -> blower/power      (Arduino: applyBlowers -> GPIO 14/15)
+  buildBlowerSpeedCmd,    // -> blower/set_speed  (Arduino: applyBlowers -> GPIO 14/15)
   type BlowerId,
   type MQTTCommand,
 } from '../types/commands';
@@ -171,6 +189,8 @@ export default function HomeScreen() {
   const selectedTimerSeconds = timerHours * 3600 + timerMinutes * 60 + timerSeconds;
   const canStartTimer = selectedTimerSeconds > 0 && selectedTimerSeconds <= MAX_TIMER_SECONDS;
 
+  // sendCommand: the single door out to the fireplace. Every button below calls this with
+  // a build...Cmd(...) message; it is sent over Wi-Fi and we wait for the board to confirm.
   const sendCommand = async (command: MQTTCommand, label: string) => {
     setPendingCommand(label);
     try {
@@ -213,6 +233,7 @@ export default function HomeScreen() {
         <Row label="Sleep timer" value={sleepActive ? formatRemaining(displaySleep) : 'Off'} />
       </View>
 
+      {/* POWER button -> system/power -> Arduino systemPowerOn()/systemPowerOff() */}
       <TouchableOpacity
         disabled={controlsDisabled}
         style={[styles.power, power ? styles.powerOn : styles.powerOff, controlsDisabled && styles.disabled]}
@@ -270,6 +291,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* VAPOUR card -> vapor/power + vapor/set_intensity -> Arduino applyMist() -> GPIO 12 */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Vapour</Text>
         {waterEmpty && <Text style={styles.warn}>Tank empty - refill to use vapour.</Text>}
@@ -298,6 +320,8 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* BLOWERS card -> blower/power + blower/set_speed -> Arduino applyBlowers() -> GPIO 14/15.
+          Only shown when the board reports it has blowers (blowerCount > 0). */}
       {blowerCount > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Blowers</Text>
