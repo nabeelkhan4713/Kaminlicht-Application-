@@ -28,6 +28,11 @@ export interface DeviceSnapshot {
   telemetry: Telemetry | null;
   lastTelemetryAt: number | null;
   manifest: Manifest | null;
+  // While Date.now() < suppressUntil, incoming telemetry is ignored (not treated as
+  // "connected"). Set during factory reset: the board keeps publishing for a couple of
+  // seconds until it actually reboots, and those straggler packets must NOT flip the UI
+  // back to connected.
+  suppressUntil: number;
 }
 
 export interface DeviceStore {
@@ -37,7 +42,7 @@ export interface DeviceStore {
 }
 
 function createDeviceStore(): DeviceStore {
-  let state: DeviceSnapshot = { online: false, connectionState: 'connecting', telemetry: null, lastTelemetryAt: null, manifest: null };
+  let state: DeviceSnapshot = { online: false, connectionState: 'connecting', telemetry: null, lastTelemetryAt: null, manifest: null, suppressUntil: 0 };
   const listeners = new Set<() => void>();
   return {
     getSnapshot: () => state,
@@ -78,7 +83,12 @@ export function DeviceProvider({
       }),
     );
     mqttService.onManifest((manifest) => store.set({ manifest }));
-    mqttService.onTelemetry((telemetry) => store.set({ telemetry, lastTelemetryAt: Date.now(), online: true, connectionState: 'connected' }));
+    mqttService.onTelemetry((telemetry) => {
+      // Ignore packets that arrive during a factory reset's reboot window — otherwise the
+      // board's last few telemetry frames would flip the UI back to "connected".
+      if (Date.now() < store.getSnapshot().suppressUntil) return;
+      store.set({ telemetry, lastTelemetryAt: Date.now(), online: true, connectionState: 'connected' });
+    });
     mqttService.connect(connection);
     return () => mqttService.disconnect();
     // The connection target is fixed for a device session.
@@ -182,7 +192,15 @@ export function usePublishWithAck(): (command: MQTTCommand, timeoutMs?: number) 
 export function useMarkReconnecting(): () => void {
   const store = useDeviceStore();
   return useCallback(
-    () => store.set({ online: false, connectionState: 'reconnecting', telemetry: null, lastTelemetryAt: null }),
+    () =>
+      store.set({
+        online: false,
+        connectionState: 'reconnecting',
+        telemetry: null,
+        lastTelemetryAt: null,
+        // Ignore the board's straggler telemetry while it reboots into setup mode (~12s).
+        suppressUntil: Date.now() + 12000,
+      }),
     [store],
   );
 }

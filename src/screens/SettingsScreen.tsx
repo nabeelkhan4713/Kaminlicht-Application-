@@ -36,11 +36,12 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             setResetInProgress(true);
+            // Clear the connected state immediately on confirm, and suppress the board's
+            // straggler telemetry so the UI never flashes "connected" during the reboot.
+            markReconnecting();
             try {
               await publishWithAck(buildFactoryResetCmd(), 6000);
-              // The board is about to reboot into setup mode and go silent — reflect that
-              // immediately so the UI never flashes "connected" during the reboot.
-              markReconnecting();
+              markReconnecting(); // refresh the suppression window from the ack moment
               setTimeout(() => setSetupOpen(true), 2500);
             } catch (error) {
               setResetInProgress(false);
