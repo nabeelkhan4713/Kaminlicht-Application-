@@ -655,6 +655,12 @@ void setup() {
   digitalWrite(SMALL_HEATER_PIN, HEAT_OFF); digitalWrite(HEATER_FAN_PIN, HEAT_OFF);
   digitalWrite(HEATER1_SSR_PIN, HEAT_OFF); digitalWrite(HEATER2_SSR_PIN, HEAT_OFF);
   analogWrite(BLOWER1_PIN, 0); analogWrite(BLOWER2_PIN, 0); analogWrite(MIST_PIN, 0);
+  // 25 kHz PWM = inaudible whine from the mist/blowers (kept as good practice). Note: this
+  // does NOT fix the "LEDs flicker when the mist runs" issue — that is power-rail ripple from
+  // the mist maker's current draw and must be solved in hardware (separate supply / caps).
+  analogWriteFrequency(MIST_PIN, 25000);
+  analogWriteFrequency(BLOWER1_PIN, 25000);
+  analogWriteFrequency(BLOWER2_PIN, 25000);
 
   initWs2805(); applyLedStrips();
   dht.begin();
