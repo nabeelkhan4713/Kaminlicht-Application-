@@ -5,7 +5,7 @@
  */
 import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import HomeScreen from '../screens/HomeScreen';
+import CassetteHomeScreen from '../screens/CassetteHomeScreen';
 import AmbienceScreen from '../screens/AmbienceScreen';
 import AudioScreen from '../screens/AudioScreen';
 import ClimateScreen from '../screens/ClimateScreen';
@@ -28,7 +28,11 @@ export default function AppNavigator() {
         tabBarActiveTintColor: '#ea580c',
       }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarIcon: icon('') }} />
+      <Tab.Screen
+        name="Home"
+        component={CassetteHomeScreen}
+        options={{ headerShown: false, tabBarIcon: icon('🔥') }}
+      />
       <Tab.Screen name="Ambience" component={AmbienceScreen} options={{ tabBarIcon: icon('💡') }} />
       {showAudio && (
         <Tab.Screen name="Audio" component={AudioScreen} options={{ tabBarIcon: icon('🔊') }} />
