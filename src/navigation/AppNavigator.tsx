@@ -5,7 +5,7 @@
  */
 import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import CassetteHomeScreen from '../screens/CassetteHomeScreen';
+import HomeScreen from '../screens/HomeScreen';
 import AmbienceScreen from '../screens/AmbienceScreen';
 import AudioScreen from '../screens/AudioScreen';
 import ClimateScreen from '../screens/ClimateScreen';
@@ -30,7 +30,7 @@ export default function AppNavigator() {
     >
       <Tab.Screen
         name="Home"
-        component={CassetteHomeScreen}
+        component={HomeScreen}
         options={{ headerShown: false, tabBarIcon: icon('🔥') }}
       />
       <Tab.Screen name="Ambience" component={AmbienceScreen} options={{ tabBarIcon: icon('💡') }} />
