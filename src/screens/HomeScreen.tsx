@@ -1,5 +1,5 @@
 /**
- * HomeScreen — the "GF Cassette 01" dark flame screen (design v1).
+ * HomeScreen — the "Glow Fire" dark flame screen (design v1).
  *
  * Faithful to the shared mockup: dark premium theme, glowing power button, an
  * animated flame, a Flame / Heat mode toggle, and a live colour wheel for the
@@ -91,7 +91,7 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>{manifest?.serialNumber ? 'GF Cassette' : 'GF Cassette 01'}</Text>
+          <Text style={styles.title}>{manifest?.serialNumber ? 'Glow Fire' : 'Glow Fire'}</Text>
         </View>
         {!connected && <Text style={styles.offline}>Reconnecting to fireplace…</Text>}
 
