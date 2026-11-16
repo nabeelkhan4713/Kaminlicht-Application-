@@ -24,10 +24,11 @@ bleService.init();
 function ConnectedApp() {
   const { device } = useDeviceSession();
 
-  // Paired mDNS name first, then its last known IP (for networks where .local does not
-  // resolve — common on Android), then the config fallbacks. Deduped, order preserved.
+  // Last known IP first (resolves instantly), then the config IP fallbacks, then the
+  // mDNS '.local' name LAST. Android often cannot resolve a '.local' name and the MQTT
+  // client can stall on it, so an mDNS name must never be ahead of a reachable IP.
   const hosts = device
-    ? Array.from(new Set([device.host, ...(device.ip ? [device.ip] : []), ...DEVICE.hosts]))
+    ? Array.from(new Set([...(device.ip ? [device.ip] : []), ...DEVICE.hosts, device.host]))
     : DEVICE.hosts;
   const serialNumber = device?.serialNumber ?? DEVICE.serialNumber;
 

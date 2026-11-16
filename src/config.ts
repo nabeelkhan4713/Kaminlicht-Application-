@@ -14,7 +14,10 @@
  */
 export const DEVICE = {
   // 192.168.188.64 is the production ESP32-S3 board's static IP (firmware/glowfire_production_s3).
-  hosts: ['192.168.188.108', 'kl-glowfire.local', '192.168.188.94', '192.168.188.64', '192.168.178.43', '192.168.188.63', '10.0.2.2'],
+  // IPs first — Android often cannot resolve an mDNS '.local' name, and the MQTT
+  // client can stall on an unresolvable host instead of moving on. Keep the mDNS
+  // name LAST as a cross-subnet fallback.
+  hosts: ['192.168.188.108', '192.168.188.94', '192.168.188.64', '192.168.178.43', '192.168.188.63', '10.0.2.2', 'kl-glowfire.local'],
   serialNumber: 'KL-2026-A3F92C',
   wsPort: 9001,
 };
