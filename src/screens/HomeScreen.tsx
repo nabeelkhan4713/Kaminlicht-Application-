@@ -16,12 +16,13 @@
  *   Timer            -> buildSleepTimerCmd        (timer/set_sleep)
  */
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import ColorPicker from 'react-native-wheel-color-picker';
 import FlameGraphic from '../components/FlameGraphic';
 import VerticalSlider from '../components/VerticalSlider';
 import Slider from '../components/Slider';
 import CircularDial from '../components/CircularDial';
+import RotaryDial from '../components/RotaryDial';
 import { useConnectionState, useManifest, usePublish, usePublishWithAck } from '../contexts/DeviceContext';
 import {
   useDeviceTelemetry,
@@ -68,7 +69,7 @@ const FACTORY: { name: string; hex: string }[] = [
   { name: 'Blue Frost', hex: '#3b82f6' },
   { name: 'Aurora', hex: '#a855f7' },
 ];
-const SOUNDS = ['Crackling Oak', 'Birch Embers', 'Pine Snap', 'Cedar Glow', 'Beech Fire', 'Redwood Night'];
+const audioName = (index: number) => `Kamin Fire Audio ${index + 1}`;
 const MAX_TIMER_MIN = 8 * 60;
 
 type Panel = 'color' | 'intensity' | 'brightness' | 'music' | 'presets' | 'timer';
@@ -105,6 +106,8 @@ export default function HomeScreen() {
   const [brightnessOverride, setBrightnessOverride] = useState<number | null>(null);
   const [custom, setCustom] = useState<ColorPreset[]>([]);
   const [timerMin, setTimerMin] = useState(60);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [presetName, setPresetName] = useState('');
 
   useEffect(() => {
     void ColorPresetStorage.load(serial).then(setCustom);
@@ -122,9 +125,15 @@ export default function HomeScreen() {
     vaporOn ? void publishWithAck(buildVaporPowerCmd(false), 6000) : void publishWithAck(buildVaporIntensityCmd(intensity), 6000);
   const toggleHeat = () => void publishWithAck(buildHeaterPowerCmd(!heaterOn), 6000);
 
-  const saveCurrent = async () => {
+  const saveCurrent = async (name: string) => {
     const { r, g, b } = hexToRgb(currentHex);
-    const next = [...custom, { id: `c-${Date.now()}`, name: `Custom ${custom.length + 1}`, color: { r, g, b } }].slice(-4);
+    const label = name.trim() || `Custom ${custom.length + 1}`;
+    const next = [...custom, { id: `c-${Date.now()}`, name: label, color: { r, g, b } }].slice(-8);
+    setCustom(next);
+    await ColorPresetStorage.save(serial, next);
+  };
+  const deletePreset = async (id: string) => {
+    const next = custom.filter((p) => p.id !== id);
     setCustom(next);
     await ColorPresetStorage.save(serial, next);
   };
@@ -209,24 +218,20 @@ export default function HomeScreen() {
             {panel === 'music' && (
               <View style={styles.panel}>
                 <Text style={styles.sectionLabel}>SOUNDS</Text>
+                <View style={styles.nowPlaying}>
+                  <View style={styles.albumArt}><Text style={{ fontSize: 30 }}>🔥</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.npName}>{audioName(audioTrackIndex ?? 0)}</Text>
+                    <Text style={styles.npState}>{audioOn ? 'Playing' : 'Paused'}</Text>
+                  </View>
+                </View>
                 <View style={styles.musicRow}>
                   <RoundBtn glyph="⏮" disabled={!connected} onPress={() => void publishWithAck(buildTrackCmd('prev'), 6000)} />
                   <RoundBtn glyph={audioOn ? '⏸' : '▶'} big accent disabled={!connected} onPress={() => void publishWithAck(buildAudioPowerCmd(!audioOn), 6000)} />
                   <RoundBtn glyph="⏭" disabled={!connected} onPress={() => void publishWithAck(buildTrackCmd('next'), 6000)} />
                 </View>
                 <Slider value={audioVolume} min={0} max={10} label="Volume" disabled={!connected} formatValue={(v) => `${Math.round(v)}`} onCommit={(v) => publish(buildVolumeCmd(Math.round(v), 10))} />
-                <View style={styles.trackList}>
-                  {SOUNDS.map((name, i) => {
-                    const current = (audioTrackIndex ?? 0) === i;
-                    return (
-                      <Pressable key={name} disabled={!connected} style={styles.trackRow}
-                        onPress={() => void publishWithAck(buildTrackCmd(i > (audioTrackIndex ?? 0) ? 'next' : 'prev'), 6000)}>
-                        <Text style={[styles.trackName, current && styles.trackNameActive]}>♪  {name}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <Text style={styles.hint}>Tap ⏭/⏮ to change sound. (Jump-to-track is a small firmware add.)</Text>
+                <Text style={styles.hint}>Use ⏭ / ⏮ to change sound. Names follow the track number on the controller.</Text>
               </View>
             )}
 
@@ -245,17 +250,20 @@ export default function HomeScreen() {
                 <Text style={styles.subLabel}>Custom</Text>
                 <View style={styles.presetWrap}>
                   {custom.map((p) => (
-                    <Pressable key={p.id} disabled={!connected} style={styles.presetPill} onPress={() => applyColor(rgbToHex(p.color.r, p.color.g, p.color.b))}>
+                    <Pressable key={p.id} disabled={!connected} style={styles.presetPill}
+                      onPress={() => applyColor(rgbToHex(p.color.r, p.color.g, p.color.b))}
+                      onLongPress={() => void deletePreset(p.id)}>
                       <View style={[styles.presetDot, { backgroundColor: rgbToHex(p.color.r, p.color.g, p.color.b) }]} />
                       <Text style={styles.presetName}>{p.name}</Text>
                     </Pressable>
                   ))}
-                  {custom.length < 4 && (
-                    <Pressable style={styles.saveSlot} onPress={() => void saveCurrent()}>
-                      <Text style={styles.saveText}>＋ Save current</Text>
+                  {custom.length < 8 && (
+                    <Pressable style={styles.saveSlot} onPress={() => { setPresetName(''); setSaveOpen(true); }}>
+                      <Text style={styles.saveText}>＋ Save current colour</Text>
                     </Pressable>
                   )}
                 </View>
+                <Text style={styles.hint}>Saves the colour on the flame now. Long-press a custom preset to delete.</Text>
               </View>
             )}
 
@@ -274,10 +282,14 @@ export default function HomeScreen() {
                   </>
                 ) : (
                   <>
-                    <CircularDial progress={timerMin / MAX_TIMER_MIN}>
-                      <Text style={styles.dialValue}>{formatMinLabel(timerMin)}</Text>
-                      <Text style={styles.dialLabel}>DURATION</Text>
-                    </CircularDial>
+                    <View style={styles.centerRow}>
+                      <RotaryDial value={timerMin} min={30} max={MAX_TIMER_MIN} step={15} disabled={!connected}
+                        onChange={setTimerMin} onCommit={setTimerMin}>
+                        <Text style={styles.dialValue}>{formatMinLabel(timerMin)}</Text>
+                        <Text style={styles.dialLabel}>DURATION</Text>
+                      </RotaryDial>
+                    </View>
+                    <Text style={styles.hint}>Drag the ring to set the time.</Text>
                     <View style={styles.timerCtrls}>
                       <Pressable style={styles.stepBtn} onPress={() => setTimerMin((m) => Math.max(30, m - 30))}>
                         <Text style={styles.stepText}>−30m</Text>
@@ -306,6 +318,34 @@ export default function HomeScreen() {
 
         {!anythingOn && <Text style={styles.emptyHint}>Enable flame or heat to begin</Text>}
       </ScrollView>
+
+      <Modal visible={saveOpen} transparent animationType="fade" onRequestClose={() => setSaveOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Name your preset</Text>
+            <View style={styles.modalColorRow}>
+              <View style={[styles.presetDot, { width: 28, height: 28, borderRadius: 14, backgroundColor: currentHex }]} />
+              <Text style={styles.modalColorLabel}>Saves the current flame colour</Text>
+            </View>
+            <TextInput
+              value={presetName}
+              onChangeText={setPresetName}
+              placeholder="e.g. Cozy Evening"
+              placeholderTextColor="#6b6058"
+              style={styles.modalInput}
+              autoFocus
+            />
+            <View style={styles.modalBtns}>
+              <Pressable style={styles.modalCancel} onPress={() => setSaveOpen(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.modalSave} onPress={() => { void saveCurrent(presetName); setSaveOpen(false); }}>
+                <Text style={styles.modalSaveText}>Save preset</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -405,10 +445,22 @@ const styles = StyleSheet.create({
   roundBtnAccent: { backgroundColor: '#fff' },
   roundGlyph: { color: '#fff', fontSize: 18 },
   roundGlyphBig: { fontSize: 26, color: '#111' },
-  trackList: { gap: 2, marginTop: 4 },
-  trackRow: { paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#241d19' },
-  trackName: { color: '#8a7f78', fontSize: 15 },
-  trackNameActive: { color: ACCENT, fontWeight: '700' },
+  nowPlaying: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#1c1512', borderRadius: 14, padding: 12 },
+  albumArt: { width: 56, height: 56, borderRadius: 12, backgroundColor: '#3a2213', alignItems: 'center', justifyContent: 'center' },
+  npName: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  npState: { color: '#8a7f78', fontSize: 13, marginTop: 2 },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  modalCard: { width: '100%', backgroundColor: '#1b1613', borderRadius: 18, padding: 20, gap: 14 },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  modalColorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  modalColorLabel: { color: '#8a7f78', fontSize: 13 },
+  modalInput: { backgroundColor: '#241d19', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: '#fff', fontSize: 15 },
+  modalBtns: { flexDirection: 'row', gap: 12 },
+  modalCancel: { flex: 1, backgroundColor: '#241d19', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  modalCancelText: { color: '#e7d9cf', fontWeight: '700' },
+  modalSave: { flex: 1, backgroundColor: ACCENT, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  modalSaveText: { color: '#fff', fontWeight: '800' },
 
   presetWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   presetPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#241d19', borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14 },
