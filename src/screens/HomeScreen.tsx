@@ -15,7 +15,7 @@
  *   Music            -> buildAudioPowerCmd / buildVolumeCmd / buildTrackCmd
  *   Timer            -> buildSleepTimerCmd        (timer/set_sleep)
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import ColorPicker from 'react-native-wheel-color-picker';
 import FlameGraphic from '../components/FlameGraphic';
@@ -130,6 +130,17 @@ export default function HomeScreen() {
   const brightness = brightnessOverride ?? (flame?.brightness ?? 100);
   const anythingOn = power && (vaporOn || heaterOn);
 
+  // Live, throttled sends while a slider is dragged: ~8/sec so the fireplace
+  // follows the finger without flooding the Wi-Fi link.
+  const lastSent = useRef(0);
+  const livePublish = (cmd: ReturnType<typeof buildColorCmd>) => {
+    const now = Date.now();
+    if (now - lastSent.current >= 120) {
+      lastSent.current = now;
+      publish(cmd);
+    }
+  };
+
   const sendColor = (hex: string) => { const { r, g, b } = hexToRgb(hex); publish(buildColorCmd('flame', { r, g, b })); };
   const applyColor = (hex: string) => { setColorOverride(hex); sendColor(hex); };
   const toggleFlame = () =>
@@ -195,10 +206,12 @@ export default function HomeScreen() {
                 <View style={styles.divider} />
                 <BlowerControl id={1} on={blower1On} speed={blower1Speed} disabled={!connected}
                   onToggle={(v) => void publishWithAck(buildBlowerPowerCmd(1, v), 6000)}
+                  onLiveSpeed={(p) => livePublish(buildBlowerSpeedCmd(1, p))}
                   onSpeed={(p) => publish(buildBlowerSpeedCmd(1, p))} />
                 {blowerCount > 1 && (
                   <BlowerControl id={2} on={blower2On} speed={blower2Speed} disabled={!connected}
                     onToggle={(v) => void publishWithAck(buildBlowerPowerCmd(2, v), 6000)}
+                    onLiveSpeed={(p) => livePublish(buildBlowerSpeedCmd(2, p))}
                     onSpeed={(p) => publish(buildBlowerSpeedCmd(2, p))} />
                 )}
               </>
@@ -211,7 +224,7 @@ export default function HomeScreen() {
                 <Text style={styles.sectionLabel}>FLAME COLOUR</Text>
                 <View style={styles.wheelRow}>
                   <View style={styles.wheelWrap}>
-                    <ColorPicker color={currentHex} onColorChange={setColorOverride} onColorChangeComplete={applyColor} thumbSize={28} sliderSize={0} noSnap row={false} swatches={false} />
+                    <ColorPicker color={currentHex} onColorChange={(c) => { setColorOverride(c); const { r, g, b } = hexToRgb(c); livePublish(buildColorCmd('flame', { r, g, b })); }} onColorChangeComplete={applyColor} thumbSize={28} sliderSize={0} noSnap row={false} swatches={false} />
                   </View>
                   <View style={styles.swatchCol}>
                     {SWATCHES.map((hex) => (
@@ -229,8 +242,8 @@ export default function HomeScreen() {
                 <View style={styles.intensityRow}>
                   <View style={styles.intensityFlame}><FlameGraphic on tint={currentHex} big /></View>
                   <VerticalSlider value={intensity} min={1} max={6} step={1} height={200} disabled={!connected}
-                    onChange={setIntensityOverride}
-                    onCommit={(v) => { setIntensityOverride(v); void publishWithAck(buildVaporIntensityCmd(v), 6000); }} />
+                    onChange={(v) => { setIntensityOverride(v); livePublish(buildVaporIntensityCmd(v)); }}
+                    onCommit={(v) => { setIntensityOverride(v); publish(buildVaporIntensityCmd(v)); }} />
                 </View>
                 <Text style={styles.hint}>Slide to set how strong the flame runs (1–6).</Text>
               </View>
@@ -242,7 +255,7 @@ export default function HomeScreen() {
                 <Text style={styles.bigValue}>{Math.round(brightness)}%</Text>
                 <View style={styles.centerRow}>
                   <VerticalSlider value={brightness} min={0} max={100} step={1} height={200} disabled={!connected}
-                    onChange={(v) => setBrightnessOverride(Math.round(v))}
+                    onChange={(v) => { setBrightnessOverride(Math.round(v)); livePublish(buildBrightnessCmd('flame', Math.round(v))); }}
                     onCommit={(v) => { setBrightnessOverride(Math.round(v)); publish(buildBrightnessCmd('flame', Math.round(v))); }} />
                 </View>
                 <Text style={styles.hint}>How bright the flame lights glow.</Text>
@@ -264,7 +277,7 @@ export default function HomeScreen() {
                   <RoundBtn glyph={audioOn ? '⏸' : '▶'} big accent disabled={!connected} onPress={() => void publishWithAck(buildAudioPowerCmd(!audioOn), 6000)} />
                   <RoundBtn glyph="⏭" disabled={!connected} onPress={() => void publishWithAck(buildTrackCmd('next'), 6000)} />
                 </View>
-                <Slider value={audioVolume} min={0} max={10} label="Volume" disabled={!connected} formatValue={(v) => `${Math.round(v)}`} onCommit={(v) => publish(buildVolumeCmd(Math.round(v), 10))} />
+                <Slider value={audioVolume} min={0} max={10} label="Volume" disabled={!connected} formatValue={(v) => `${Math.round(v)}`} onChange={(v) => livePublish(buildVolumeCmd(Math.round(v), 10))} onCommit={(v) => publish(buildVolumeCmd(Math.round(v), 10))} />
                 <Text style={styles.hint}>Use ⏭ / ⏮ to change sound. Names follow the track number on the controller.</Text>
               </View>
             )}
@@ -426,8 +439,8 @@ function TogglePill({ on, disabled, onPress }: { on: boolean; disabled: boolean;
   );
 }
 
-function BlowerControl({ id, on, speed, disabled, onToggle, onSpeed }: {
-  id: number; on: boolean; speed: number; disabled: boolean; onToggle: (v: boolean) => void; onSpeed: (p: number) => void;
+function BlowerControl({ id, on, speed, disabled, onToggle, onLiveSpeed, onSpeed }: {
+  id: number; on: boolean; speed: number; disabled: boolean; onToggle: (v: boolean) => void; onLiveSpeed: (p: number) => void; onSpeed: (p: number) => void;
 }) {
   return (
     <View style={{ gap: 6 }}>
@@ -435,7 +448,7 @@ function BlowerControl({ id, on, speed, disabled, onToggle, onSpeed }: {
         <Text style={styles.rowLabel}>Blower {id}</Text>
         <TogglePill on={on} disabled={disabled} onPress={() => onToggle(!on)} />
       </View>
-      <Slider value={speed} min={0} max={100} disabled={disabled || !on} formatValue={(v) => `${Math.round(v)}%`} onCommit={onSpeed} />
+      <Slider value={speed} min={0} max={100} disabled={disabled || !on} formatValue={(v) => `${Math.round(v)}%`} onChange={onLiveSpeed} onCommit={onSpeed} />
     </View>
   );
 }
