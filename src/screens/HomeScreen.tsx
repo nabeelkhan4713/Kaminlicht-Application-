@@ -140,7 +140,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Text style={styles.title}>Glow Fire</Text>
         </View>
@@ -306,18 +306,22 @@ export default function HomeScreen() {
               </View>
             )}
 
-            <View style={styles.dock}>
-              {DOCK.map((d) => (
-                <Pressable key={d.key} style={[styles.dockBtn, panel === d.key && styles.dockBtnActive]} onPress={() => setPanel(d.key)}>
-                  <Text style={styles.dockIcon}>{d.icon}</Text>
-                </Pressable>
-              ))}
-            </View>
           </>
         )}
 
         {!anythingOn && <Text style={styles.emptyHint}>Enable flame or heat to begin</Text>}
       </ScrollView>
+
+      {/* Fixed control dock — outside the ScrollView so a single tap always registers. */}
+      {mode === 'flame' && (
+        <View style={styles.dock}>
+          {DOCK.map((d) => (
+            <Pressable key={d.key} style={[styles.dockBtn, panel === d.key && styles.dockBtnActive]} onPress={() => setPanel(d.key)}>
+              <Text style={styles.dockIcon}>{d.icon}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       <Modal visible={saveOpen} transparent animationType="fade" onRequestClose={() => setSaveOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -485,7 +489,7 @@ const styles = StyleSheet.create({
   cancelBtn: { borderWidth: 1, borderColor: '#dc2626', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 6 },
   cancelText: { color: '#f87171', fontWeight: '700' },
 
-  dock: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: CARD, borderRadius: 18, padding: 8 },
+  dock: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: CARD, borderRadius: 18, padding: 8, marginHorizontal: 20, marginTop: 8, marginBottom: 10 },
   dockBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 14, marginHorizontal: 2 },
   dockBtnActive: { backgroundColor: ACCENT },
   dockIcon: { fontSize: 19 },
