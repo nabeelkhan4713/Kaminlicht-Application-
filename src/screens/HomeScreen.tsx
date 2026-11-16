@@ -1,25 +1,27 @@
 /**
- * HomeScreen — the "Glow Fire" dark flame screen (design v2).
+ * HomeScreen — the "Glow Fire" dark flame screen (design v3).
  *
- * Dark premium theme matching the mockup: glowing power button, animated flame,
- * a Flame / Heat mode toggle, and a bottom control row that swaps the panel above
- * it between Colour, Flame intensity, Brightness, Music and Sleep timer.
+ * Dark premium theme matching the mockups. A Flame/Heat toggle, a glowing power
+ * button and a real SVG flame. A bottom control dock swaps the panel above it:
+ *   Colour · Intensity · Brightness · Music · Presets · Timer.
  *
- * Every control is wired to the REAL firmware commands:
+ * Everything is wired to REAL firmware commands:
  *   Power            -> buildPowerCmd            (system/power)
  *   Flame on/off     -> buildVaporPowerCmd       (vapor/power)
  *   Flame intensity  -> buildVaporIntensityCmd   (vapor/set_intensity 1-6)
  *   Heat on/off      -> buildHeaterPowerCmd      (climate/power)
- *   Colour wheel     -> buildColorCmd('flame')   (lighting/set_color -> WS2805)
- *   Brightness       -> buildBrightnessCmd       (lighting/set_brightness 0-100)
+ *   Colour / presets -> buildColorCmd('flame')   (lighting/set_color)
+ *   Brightness       -> buildBrightnessCmd       (lighting/set_brightness)
  *   Music            -> buildAudioPowerCmd / buildVolumeCmd / buildTrackCmd
- *   Sleep timer      -> buildSleepTimerCmd       (timer/set_sleep seconds)
+ *   Timer            -> buildSleepTimerCmd        (timer/set_sleep)
  */
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import ColorPicker from 'react-native-wheel-color-picker';
-import RNSlider from '@react-native-community/slider';
+import FlameGraphic from '../components/FlameGraphic';
+import VerticalSlider from '../components/VerticalSlider';
 import Slider from '../components/Slider';
+import CircularDial from '../components/CircularDial';
 import { useConnectionState, useManifest, usePublish, usePublishWithAck } from '../contexts/DeviceContext';
 import {
   useDeviceTelemetry,
@@ -30,6 +32,7 @@ import {
   useHeaterStage,
   useAudioOn,
   useAudioVolume,
+  useAudioTrackIndex,
   useSleepRemaining,
 } from '../hooks/useDeviceTelemetry';
 import {
@@ -45,26 +48,37 @@ import {
   buildTrackCmd,
   buildSleepTimerCmd,
 } from '../types/commands';
+import { ColorPresetStorage, type ColorPreset } from '../services/ColorPresetStorage';
 
-// ---- colour helpers (hex <-> rgb) ----
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
+// ---- colour helpers ----
+function hexToRgb(hex: string) {
   const h = hex.replace('#', '');
   const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
-function rgbToHex(r: number, g: number, b: number): string {
+function rgbToHex(r: number, g: number, b: number) {
   const to = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
   return `#${to(r)}${to(g)}${to(b)}`;
 }
 
 const SWATCHES = ['#ff7a18', '#e85d13', '#ffd21e', '#e01e1e', '#3b82f6', '#a855f7', '#10b981'];
-type Panel = 'color' | 'intensity' | 'brightness' | 'music' | 'timer';
-const PANELS: { key: Panel; icon: string; label: string }[] = [
-  { key: 'color', icon: '🎨', label: 'Colour' },
-  { key: 'intensity', icon: '🔥', label: 'Intensity' },
-  { key: 'brightness', icon: '☀️', label: 'Brightness' },
-  { key: 'music', icon: '🎵', label: 'Music' },
-  { key: 'timer', icon: '⏱️', label: 'Timer' },
+const FACTORY: { name: string; hex: string }[] = [
+  { name: 'Classic Ember', hex: '#ff7a18' },
+  { name: 'Inferno', hex: '#e01e1e' },
+  { name: 'Blue Frost', hex: '#3b82f6' },
+  { name: 'Aurora', hex: '#a855f7' },
+];
+const SOUNDS = ['Crackling Oak', 'Birch Embers', 'Pine Snap', 'Cedar Glow', 'Beech Fire', 'Redwood Night'];
+const MAX_TIMER_MIN = 8 * 60;
+
+type Panel = 'color' | 'intensity' | 'brightness' | 'music' | 'presets' | 'timer';
+const DOCK: { key: Panel; icon: string }[] = [
+  { key: 'color', icon: '🎨' },
+  { key: 'intensity', icon: '🔥' },
+  { key: 'brightness', icon: '☀️' },
+  { key: 'music', icon: '🎵' },
+  { key: 'presets', icon: '✨' },
+  { key: 'timer', icon: '⏱️' },
 ];
 
 export default function HomeScreen() {
@@ -77,16 +91,24 @@ export default function HomeScreen() {
   const heaterStage = useHeaterStage();
   const audioOn = useAudioOn();
   const audioVolume = useAudioVolume();
+  const audioTrackIndex = useAudioTrackIndex();
   const sleepRemaining = useSleepRemaining();
   const flame = useDeviceTelemetry((t) => t?.lighting?.flame ?? null);
   const publish = usePublish();
   const publishWithAck = usePublishWithAck();
 
+  const serial = manifest?.serialNumber ?? 'default';
   const [mode, setMode] = useState<'flame' | 'heat'>('flame');
   const [panel, setPanel] = useState<Panel>('color');
   const [colorOverride, setColorOverride] = useState<string | null>(null);
   const [intensityOverride, setIntensityOverride] = useState<number | null>(null);
   const [brightnessOverride, setBrightnessOverride] = useState<number | null>(null);
+  const [custom, setCustom] = useState<ColorPreset[]>([]);
+  const [timerMin, setTimerMin] = useState(60);
+
+  useEffect(() => {
+    void ColorPresetStorage.load(serial).then(setCustom);
+  }, [serial]);
 
   const deviceHex = flame ? rgbToHex(flame.r, flame.g, flame.b) : '#ff7a18';
   const currentHex = colorOverride ?? deviceHex;
@@ -94,88 +116,63 @@ export default function HomeScreen() {
   const brightness = brightnessOverride ?? (flame?.brightness ?? 100);
   const anythingOn = power && (vaporOn || heaterOn);
 
-  // ---- flame flicker animation ----
-  const flicker = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!vaporOn) {
-      flicker.stopAnimation();
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(flicker, { toValue: 1, duration: 650, useNativeDriver: true }),
-        Animated.timing(flicker, { toValue: 0, duration: 750, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [vaporOn, flicker]);
-
-  const sendColor = (hex: string) => {
-    const { r, g, b } = hexToRgb(hex);
-    publish(buildColorCmd('flame', { r, g, b }));
-  };
+  const sendColor = (hex: string) => { const { r, g, b } = hexToRgb(hex); publish(buildColorCmd('flame', { r, g, b })); };
+  const applyColor = (hex: string) => { setColorOverride(hex); sendColor(hex); };
   const toggleFlame = () =>
-    vaporOn
-      ? void publishWithAck(buildVaporPowerCmd(false), 6000)
-      : void publishWithAck(buildVaporIntensityCmd(intensity), 6000);
+    vaporOn ? void publishWithAck(buildVaporPowerCmd(false), 6000) : void publishWithAck(buildVaporIntensityCmd(intensity), 6000);
   const toggleHeat = () => void publishWithAck(buildHeaterPowerCmd(!heaterOn), 6000);
+
+  const saveCurrent = async () => {
+    const { r, g, b } = hexToRgb(currentHex);
+    const next = [...custom, { id: `c-${Date.now()}`, name: `Custom ${custom.length + 1}`, color: { r, g, b } }].slice(-4);
+    setCustom(next);
+    await ColorPresetStorage.save(serial, next);
+  };
 
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.title}>{manifest?.serialNumber ? 'Glow Fire' : 'Glow Fire'}</Text>
+          <Text style={styles.title}>Glow Fire</Text>
         </View>
         {!connected && <Text style={styles.offline}>Reconnecting to fireplace…</Text>}
 
-        {/* Power + flame hero */}
         <View style={styles.hero}>
           <PowerButton on={power} disabled={!connected} onPress={() => void publishWithAck(buildPowerCmd(!power), 6000)} />
-          <FlameViz on={vaporOn} flicker={flicker} tint={currentHex} />
+          <View style={styles.heroFlame}><FlameGraphic on={vaporOn} tint={currentHex} /></View>
         </View>
 
-        {/* Flame / Heat mode toggle */}
         <View style={styles.segment}>
           <SegmentTab label="Flame" active={mode === 'flame'} on={vaporOn} onSelect={() => setMode('flame')} onToggle={toggleFlame} disabled={!connected} />
           <SegmentTab label="Heat" active={mode === 'heat'} on={heaterOn} onSelect={() => setMode('heat')} onToggle={toggleHeat} disabled={!connected} />
         </View>
 
         {mode === 'heat' ? (
-          <HeatPanel
-            on={heaterOn}
-            stage={heaterStage}
-            stages={manifest?.capabilities.climate.stages ?? 0}
-            disabled={!connected}
-            onStage={(s) => void publishWithAck(buildHeaterStageCmd(s), 6000)}
-          />
+          <View style={styles.panel}>
+            <Text style={styles.sectionLabel}>HEAT</Text>
+            <Text style={styles.hint}>{heaterOn ? 'Heater is running.' : 'Turn on Heat above to warm the room.'}</Text>
+            {heaterOn && (manifest?.capabilities.climate.stages ?? 0) >= 2 && (
+              <View style={styles.presetRow}>
+                {[1, 2].map((s) => (
+                  <Pressable key={s} style={[styles.chip, heaterStage === s && styles.chipActive]} disabled={!connected} onPress={() => void publishWithAck(buildHeaterStageCmd(s as 1 | 2), 6000)}>
+                    <Text style={[styles.chipText, heaterStage === s && styles.chipTextActive]}>{s === 1 ? '1000 W' : '2000 W'}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
         ) : (
           <>
-            {/* Selected control panel */}
             {panel === 'color' && (
               <View style={styles.panel}>
                 <Text style={styles.sectionLabel}>FLAME COLOUR</Text>
                 <View style={styles.wheelRow}>
                   <View style={styles.wheelWrap}>
-                    <ColorPicker
-                      color={currentHex}
-                      onColorChange={(c: string) => setColorOverride(c)}
-                      onColorChangeComplete={(c: string) => { setColorOverride(c); sendColor(c); }}
-                      thumbSize={28}
-                      sliderSize={0}
-                      noSnap
-                      row={false}
-                      swatches={false}
-                    />
+                    <ColorPicker color={currentHex} onColorChange={setColorOverride} onColorChangeComplete={applyColor} thumbSize={28} sliderSize={0} noSnap row={false} swatches={false} />
                   </View>
                   <View style={styles.swatchCol}>
                     {SWATCHES.map((hex) => (
-                      <Pressable
-                        key={hex}
-                        disabled={!connected}
-                        onPress={() => { setColorOverride(hex); sendColor(hex); }}
-                        style={[styles.swatch, { backgroundColor: hex }, currentHex.toLowerCase() === hex.toLowerCase() && styles.swatchSelected]}
-                      />
+                      <Pressable key={hex} disabled={!connected} onPress={() => applyColor(hex)} style={[styles.swatch, { backgroundColor: hex }, currentHex.toLowerCase() === hex.toLowerCase() && styles.swatchSelected]} />
                     ))}
                   </View>
                 </View>
@@ -187,16 +184,10 @@ export default function HomeScreen() {
                 <Text style={styles.sectionLabel}>FLAME INTENSITY</Text>
                 <Text style={styles.bigValue}>{intensity}</Text>
                 <View style={styles.intensityRow}>
-                  <FlameViz on tint={currentHex} flicker={flicker} big />
-                  <VerticalSlider
-                    value={intensity}
-                    min={1}
-                    max={6}
-                    step={1}
-                    disabled={!connected}
-                    onChange={(v) => setIntensityOverride(v)}
-                    onCommit={(v) => { setIntensityOverride(v); void publishWithAck(buildVaporIntensityCmd(v), 6000); }}
-                  />
+                  <View style={styles.intensityFlame}><FlameGraphic on tint={currentHex} big /></View>
+                  <VerticalSlider value={intensity} min={1} max={6} step={1} height={200} disabled={!connected}
+                    onChange={setIntensityOverride}
+                    onCommit={(v) => { setIntensityOverride(v); void publishWithAck(buildVaporIntensityCmd(v), 6000); }} />
                 </View>
                 <Text style={styles.hint}>Slide to set how strong the flame runs (1–6).</Text>
               </View>
@@ -205,71 +196,108 @@ export default function HomeScreen() {
             {panel === 'brightness' && (
               <View style={styles.panel}>
                 <Text style={styles.sectionLabel}>BRIGHTNESS</Text>
-                <Slider
-                  value={brightness}
-                  min={0}
-                  max={100}
-                  disabled={!connected}
-                  formatValue={(v) => `${Math.round(v)}%`}
-                  onChange={(v) => setBrightnessOverride(v)}
-                  onCommit={(v) => { setBrightnessOverride(Math.round(v)); publish(buildBrightnessCmd('flame', Math.round(v))); }}
-                />
+                <Text style={styles.bigValue}>{Math.round(brightness)}%</Text>
+                <View style={styles.centerRow}>
+                  <VerticalSlider value={brightness} min={0} max={100} step={1} height={200} disabled={!connected}
+                    onChange={(v) => setBrightnessOverride(Math.round(v))}
+                    onCommit={(v) => { setBrightnessOverride(Math.round(v)); publish(buildBrightnessCmd('flame', Math.round(v))); }} />
+                </View>
                 <Text style={styles.hint}>How bright the flame lights glow.</Text>
               </View>
             )}
 
             {panel === 'music' && (
               <View style={styles.panel}>
-                <Text style={styles.sectionLabel}>MUSIC</Text>
+                <Text style={styles.sectionLabel}>SOUNDS</Text>
                 <View style={styles.musicRow}>
                   <RoundBtn glyph="⏮" disabled={!connected} onPress={() => void publishWithAck(buildTrackCmd('prev'), 6000)} />
                   <RoundBtn glyph={audioOn ? '⏸' : '▶'} big accent disabled={!connected} onPress={() => void publishWithAck(buildAudioPowerCmd(!audioOn), 6000)} />
                   <RoundBtn glyph="⏭" disabled={!connected} onPress={() => void publishWithAck(buildTrackCmd('next'), 6000)} />
                 </View>
-                <Slider
-                  value={audioVolume}
-                  min={0}
-                  max={10}
-                  label="Volume"
-                  disabled={!connected}
-                  formatValue={(v) => `${Math.round(v)}`}
-                  onCommit={(v) => publish(buildVolumeCmd(Math.round(v), 10))}
-                />
+                <Slider value={audioVolume} min={0} max={10} label="Volume" disabled={!connected} formatValue={(v) => `${Math.round(v)}`} onCommit={(v) => publish(buildVolumeCmd(Math.round(v), 10))} />
+                <View style={styles.trackList}>
+                  {SOUNDS.map((name, i) => {
+                    const current = (audioTrackIndex ?? 0) === i;
+                    return (
+                      <Pressable key={name} disabled={!connected} style={styles.trackRow}
+                        onPress={() => void publishWithAck(buildTrackCmd(i > (audioTrackIndex ?? 0) ? 'next' : 'prev'), 6000)}>
+                        <Text style={[styles.trackName, current && styles.trackNameActive]}>♪  {name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.hint}>Tap ⏭/⏮ to change sound. (Jump-to-track is a small firmware add.)</Text>
+              </View>
+            )}
+
+            {panel === 'presets' && (
+              <View style={styles.panel}>
+                <Text style={styles.sectionLabel}>PRESETS</Text>
+                <Text style={styles.subLabel}>Factory</Text>
+                <View style={styles.presetWrap}>
+                  {FACTORY.map((p) => (
+                    <Pressable key={p.name} disabled={!connected} style={styles.presetPill} onPress={() => applyColor(p.hex)}>
+                      <View style={[styles.presetDot, { backgroundColor: p.hex }]} />
+                      <Text style={styles.presetName}>{p.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.subLabel}>Custom</Text>
+                <View style={styles.presetWrap}>
+                  {custom.map((p) => (
+                    <Pressable key={p.id} disabled={!connected} style={styles.presetPill} onPress={() => applyColor(rgbToHex(p.color.r, p.color.g, p.color.b))}>
+                      <View style={[styles.presetDot, { backgroundColor: rgbToHex(p.color.r, p.color.g, p.color.b) }]} />
+                      <Text style={styles.presetName}>{p.name}</Text>
+                    </Pressable>
+                  ))}
+                  {custom.length < 4 && (
+                    <Pressable style={styles.saveSlot} onPress={() => void saveCurrent()}>
+                      <Text style={styles.saveText}>＋ Save current</Text>
+                    </Pressable>
+                  )}
+                </View>
               </View>
             )}
 
             {panel === 'timer' && (
               <View style={styles.panel}>
-                <Text style={styles.sectionLabel}>SLEEP TIMER</Text>
+                <Text style={styles.sectionLabel}>TIMER · FLAME</Text>
                 {sleepRemaining && sleepRemaining > 0 ? (
                   <>
-                    <Text style={styles.bigValue}>{formatRemaining(sleepRemaining)}</Text>
+                    <CircularDial progress={sleepRemaining / (MAX_TIMER_MIN * 60)}>
+                      <Text style={styles.dialValue}>{formatHM(sleepRemaining)}</Text>
+                      <Text style={styles.dialLabel}>REMAINING</Text>
+                    </CircularDial>
                     <Pressable style={styles.cancelBtn} disabled={!connected} onPress={() => void publishWithAck(buildSleepTimerCmd(0), 6000)}>
                       <Text style={styles.cancelText}>Cancel timer</Text>
                     </Pressable>
                   </>
                 ) : (
-                  <View style={styles.presetRow}>
-                    {[
-                      { label: '30 min', s: 1800 },
-                      { label: '1 hour', s: 3600 },
-                      { label: '2 hours', s: 7200 },
-                    ].map((p) => (
-                      <Pressable key={p.s} style={styles.preset} disabled={!connected} onPress={() => void publishWithAck(buildSleepTimerCmd(p.s), 6000)}>
-                        <Text style={styles.presetText}>{p.label}</Text>
+                  <>
+                    <CircularDial progress={timerMin / MAX_TIMER_MIN}>
+                      <Text style={styles.dialValue}>{formatMinLabel(timerMin)}</Text>
+                      <Text style={styles.dialLabel}>DURATION</Text>
+                    </CircularDial>
+                    <View style={styles.timerCtrls}>
+                      <Pressable style={styles.stepBtn} onPress={() => setTimerMin((m) => Math.max(30, m - 30))}>
+                        <Text style={styles.stepText}>−30m</Text>
                       </Pressable>
-                    ))}
-                  </View>
+                      <Pressable style={[styles.startBtn, !connected && styles.dim]} disabled={!connected} onPress={() => void publishWithAck(buildSleepTimerCmd(timerMin * 60), 6000)}>
+                        <Text style={styles.startText}>Start</Text>
+                      </Pressable>
+                      <Pressable style={styles.stepBtn} onPress={() => setTimerMin((m) => Math.min(MAX_TIMER_MIN, m + 30))}>
+                        <Text style={styles.stepText}>+30m</Text>
+                      </Pressable>
+                    </View>
+                  </>
                 )}
-                <Text style={styles.hint}>Turn everything off automatically after a while.</Text>
               </View>
             )}
 
-            {/* Bottom control row */}
             <View style={styles.dock}>
-              {PANELS.map((p) => (
-                <Pressable key={p.key} style={[styles.dockBtn, panel === p.key && styles.dockBtnActive]} onPress={() => setPanel(p.key)}>
-                  <Text style={styles.dockIcon}>{p.icon}</Text>
+              {DOCK.map((d) => (
+                <Pressable key={d.key} style={[styles.dockBtn, panel === d.key && styles.dockBtnActive]} onPress={() => setPanel(d.key)}>
+                  <Text style={styles.dockIcon}>{d.icon}</Text>
                 </Pressable>
               ))}
             </View>
@@ -282,63 +310,14 @@ export default function HomeScreen() {
   );
 }
 
-function formatRemaining(seconds: number): string {
+function formatHM(seconds: number) {
   const s = Math.max(0, Math.floor(seconds));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
-
-// ---- Vertical slider (native slider rotated, fills from the bottom) ----
-function VerticalSlider({ value, min, max, step, disabled, onChange, onCommit }: {
-  value: number; min: number; max: number; step: number; disabled: boolean;
-  onChange: (v: number) => void; onCommit: (v: number) => void;
-}) {
-  const H = 200;
-  return (
-    <View style={{ height: H, width: 48, alignItems: 'center', justifyContent: 'center' }}>
-      <RNSlider
-        style={{ width: H, height: 48, transform: [{ rotate: '-90deg' }] }}
-        minimumValue={min}
-        maximumValue={max}
-        step={step}
-        value={value}
-        disabled={disabled}
-        minimumTrackTintColor={ACCENT}
-        maximumTrackTintColor="#3a322d"
-        thumbTintColor={ACCENT}
-        onValueChange={onChange}
-        onSlidingComplete={onCommit}
-      />
-    </View>
-  );
-}
-
-function RoundBtn({ glyph, big, accent, disabled, onPress }: { glyph: string; big?: boolean; accent?: boolean; disabled?: boolean; onPress: () => void }) {
-  return (
-    <Pressable disabled={disabled} onPress={onPress} style={[styles.roundBtn, big && styles.roundBtnBig, accent && styles.roundBtnAccent, disabled && styles.dim]}>
-      <Text style={[styles.roundGlyph, big && styles.roundGlyphBig]}>{glyph}</Text>
-    </Pressable>
-  );
-}
-
-function HeatPanel({ on, stage, stages, disabled, onStage }: { on: boolean; stage: number; stages: number; disabled: boolean; onStage: (s: 1 | 2) => void }) {
-  return (
-    <View style={styles.panel}>
-      <Text style={styles.sectionLabel}>HEAT</Text>
-      <Text style={styles.hint}>{on ? 'Heater is running.' : 'Turn on Heat above to warm the room.'}</Text>
-      {on && stages >= 2 && (
-        <View style={styles.presetRow}>
-          {[1, 2].map((s) => (
-            <Pressable key={s} style={[styles.preset, stage === s && styles.presetActive]} disabled={disabled} onPress={() => onStage(s as 1 | 2)}>
-              <Text style={[styles.presetText, stage === s && styles.presetTextActive]}>{s === 1 ? '1000 W' : '2000 W'}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </View>
-  );
+function formatMinLabel(min: number) {
+  const h = Math.floor(min / 60), m = min % 60;
+  return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
 }
 
 function PowerButton({ on, disabled, onPress }: { on: boolean; disabled: boolean; onPress: () => void }) {
@@ -353,27 +332,11 @@ function PowerButton({ on, disabled, onPress }: { on: boolean; disabled: boolean
   );
 }
 
-function FlameViz({ on, flicker, tint, big }: { on: boolean; flicker: Animated.Value; tint: string; big?: boolean }) {
-  const bars = [0.55, 0.8, 1, 0.85, 0.6];
+function RoundBtn({ glyph, big, accent, disabled, onPress }: { glyph: string; big?: boolean; accent?: boolean; disabled?: boolean; onPress: () => void }) {
   return (
-    <View style={[styles.flameBox, big && styles.flameBoxBig]}>
-      {on ? (
-        <View style={[styles.flameRow, big && { height: 150 }]}>
-          {bars.map((h, i) => {
-            const scaleY = flicker.interpolate({ inputRange: [0, 1], outputRange: [h, h * (i % 2 === 0 ? 0.78 : 1.12)] });
-            const opacity = flicker.interpolate({ inputRange: [0, 1], outputRange: [0.9, 0.6] });
-            return (
-              <Animated.View
-                key={i}
-                style={[styles.flameBar, big && { width: 16, height: 130 }, { backgroundColor: tint, transform: [{ scaleY }], opacity, shadowColor: tint }]}
-              />
-            );
-          })}
-        </View>
-      ) : (
-        <Text style={styles.flameOff}>🔥</Text>
-      )}
-    </View>
+    <Pressable disabled={disabled} onPress={onPress} style={[styles.roundBtn, big && styles.roundBtnBig, accent && styles.roundBtnAccent, disabled && styles.dim]}>
+      <Text style={[styles.roundGlyph, big && styles.roundGlyphBig]}>{glyph}</Text>
+    </Pressable>
   );
 }
 
@@ -402,18 +365,13 @@ const styles = StyleSheet.create({
   offline: { color: '#fca5a5', fontSize: 13, textAlign: 'center' },
 
   hero: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 },
+  heroFlame: { flex: 1, height: 96, backgroundColor: '#120d0a', borderRadius: 16, overflow: 'hidden', justifyContent: 'center' },
   powerOuter: { width: 66, height: 66, borderRadius: 33, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1714', borderWidth: 1, borderColor: '#2a2320' },
   powerOuterOn: { borderColor: ACCENT, shadowColor: ACCENT, shadowOpacity: 0.9, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 },
   powerInner: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: '#241d19' },
   powerInnerOn: { backgroundColor: '#3a2213' },
   powerGlyph: { color: '#8a7f78', fontSize: 24, fontWeight: '700' },
   powerGlyphOn: { color: ACCENT },
-
-  flameBox: { flex: 1, height: 96, backgroundColor: '#120d0a', borderRadius: 16, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  flameBoxBig: { flex: 1, height: 170 },
-  flameRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 70 },
-  flameBar: { width: 10, height: 60, borderRadius: 6, shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 6 },
-  flameOff: { fontSize: 30, opacity: 0.35 },
 
   segment: { flexDirection: 'row', gap: 10, backgroundColor: CARD, borderRadius: 16, padding: 8 },
   segTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 10, borderRadius: 12 },
@@ -425,10 +383,11 @@ const styles = StyleSheet.create({
   knob: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: 'flex-start' },
   knobOn: { alignSelf: 'flex-end' },
 
-  panel: { backgroundColor: CARD, borderRadius: 18, padding: 16, gap: 14, minHeight: 180 },
+  panel: { backgroundColor: CARD, borderRadius: 18, padding: 16, gap: 12, minHeight: 200, alignItems: 'stretch' },
   sectionLabel: { color: '#8a7f78', fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
-  bigValue: { color: '#fff', fontSize: 40, fontWeight: '800', textAlign: 'center' },
-  hint: { color: '#8a7f78', fontSize: 13, textAlign: 'center' },
+  subLabel: { color: '#6b6058', fontSize: 11, fontWeight: '800', letterSpacing: 1, marginTop: 4 },
+  bigValue: { color: '#fff', fontSize: 38, fontWeight: '800', textAlign: 'center' },
+  hint: { color: '#8a7f78', fontSize: 12.5, textAlign: 'center' },
 
   wheelRow: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   wheelWrap: { flex: 1, aspectRatio: 1, maxWidth: 240 },
@@ -436,27 +395,48 @@ const styles = StyleSheet.create({
   swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, borderColor: 'transparent' },
   swatchSelected: { borderColor: '#fff' },
 
-  intensityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
+  intensityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24 },
+  intensityFlame: { width: 150, alignItems: 'center' },
+  centerRow: { alignItems: 'center' },
 
-  musicRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 22, paddingVertical: 4 },
+  musicRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 22, paddingVertical: 2 },
   roundBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#241d19', alignItems: 'center', justifyContent: 'center' },
   roundBtnBig: { width: 64, height: 64, borderRadius: 32 },
-  roundBtnAccent: { backgroundColor: ACCENT },
+  roundBtnAccent: { backgroundColor: '#fff' },
   roundGlyph: { color: '#fff', fontSize: 18 },
-  roundGlyphBig: { fontSize: 26 },
+  roundGlyphBig: { fontSize: 26, color: '#111' },
+  trackList: { gap: 2, marginTop: 4 },
+  trackRow: { paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#241d19' },
+  trackName: { color: '#8a7f78', fontSize: 15 },
+  trackNameActive: { color: ACCENT, fontWeight: '700' },
+
+  presetWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  presetPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#241d19', borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14 },
+  presetDot: { width: 18, height: 18, borderRadius: 9 },
+  presetName: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  saveSlot: { borderWidth: 1, borderColor: '#3a322d', borderStyle: 'dashed', borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, justifyContent: 'center' },
+  saveText: { color: '#8a7f78', fontWeight: '700', fontSize: 13 },
 
   presetRow: { flexDirection: 'row', gap: 10 },
-  preset: { flex: 1, backgroundColor: '#241d19', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  presetActive: { backgroundColor: ACCENT },
-  presetText: { color: '#e7d9cf', fontWeight: '700' },
-  presetTextActive: { color: '#fff' },
-  cancelBtn: { borderWidth: 1, borderColor: '#dc2626', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  chip: { flex: 1, backgroundColor: '#241d19', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  chipActive: { backgroundColor: ACCENT },
+  chipText: { color: '#e7d9cf', fontWeight: '700' },
+  chipTextActive: { color: '#fff' },
+
+  dialValue: { color: '#fff', fontSize: 26, fontWeight: '800' },
+  dialLabel: { color: '#8a7f78', fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 2 },
+  timerCtrls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 6 },
+  stepBtn: { backgroundColor: '#241d19', borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 },
+  stepText: { color: '#e7d9cf', fontWeight: '700' },
+  startBtn: { backgroundColor: ACCENT, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 28 },
+  startText: { color: '#fff', fontWeight: '800' },
+  cancelBtn: { borderWidth: 1, borderColor: '#dc2626', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 6 },
   cancelText: { color: '#f87171', fontWeight: '700' },
 
-  dock: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: CARD, borderRadius: 18, padding: 10 },
+  dock: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: CARD, borderRadius: 18, padding: 8 },
   dockBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 14, marginHorizontal: 2 },
   dockBtnActive: { backgroundColor: ACCENT },
-  dockIcon: { fontSize: 20 },
+  dockIcon: { fontSize: 19 },
 
   emptyHint: { color: '#6b6058', fontSize: 14, textAlign: 'center', marginTop: 8 },
   dim: { opacity: 0.4 },
