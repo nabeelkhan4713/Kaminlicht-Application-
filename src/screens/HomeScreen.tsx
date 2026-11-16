@@ -133,11 +133,12 @@ export default function HomeScreen() {
   // Live, throttled sends while a slider is dragged: ~8/sec so the fireplace
   // follows the finger without flooding the Wi-Fi link.
   const lastSent = useRef(0);
-  const livePublish = (cmd: ReturnType<typeof buildColorCmd>) => {
+  const livePublish = (cmd: ReturnType<typeof buildColorCmd>, apply?: () => void) => {
     const now = Date.now();
-    if (now - lastSent.current >= 120) {
+    if (now - lastSent.current >= 100) {
       lastSent.current = now;
       publish(cmd);
+      apply?.(); // throttle the state update too, so the screen doesn't re-render on every finger move
     }
   };
 
@@ -224,7 +225,7 @@ export default function HomeScreen() {
                 <Text style={styles.sectionLabel}>FLAME COLOUR</Text>
                 <View style={styles.wheelRow}>
                   <View style={styles.wheelWrap}>
-                    <ColorPicker color={currentHex} onColorChange={(c) => { setColorOverride(c); const { r, g, b } = hexToRgb(c); livePublish(buildColorCmd('flame', { r, g, b })); }} onColorChangeComplete={applyColor} thumbSize={28} sliderSize={0} noSnap row={false} swatches={false} />
+                    <ColorPicker color={currentHex} onColorChange={(c) => { const { r, g, b } = hexToRgb(c); livePublish(buildColorCmd('flame', { r, g, b }), () => setColorOverride(c)); }} onColorChangeComplete={applyColor} thumbSize={28} sliderSize={0} noSnap row={false} swatches={false} />
                   </View>
                   <View style={styles.swatchCol}>
                     {SWATCHES.map((hex) => (
@@ -242,7 +243,7 @@ export default function HomeScreen() {
                 <View style={styles.intensityRow}>
                   <View style={styles.intensityFlame}><FlameGraphic on tint={currentHex} big /></View>
                   <VerticalSlider value={intensity} min={1} max={6} step={1} height={200} disabled={!connected}
-                    onChange={(v) => { setIntensityOverride(v); livePublish(buildVaporIntensityCmd(v)); }}
+                    onChange={(v) => livePublish(buildVaporIntensityCmd(v), () => setIntensityOverride(v))}
                     onCommit={(v) => { setIntensityOverride(v); publish(buildVaporIntensityCmd(v)); }} />
                 </View>
                 <Text style={styles.hint}>Slide to set how strong the flame runs (1–6).</Text>
@@ -255,7 +256,7 @@ export default function HomeScreen() {
                 <Text style={styles.bigValue}>{Math.round(brightness)}%</Text>
                 <View style={styles.centerRow}>
                   <VerticalSlider value={brightness} min={0} max={100} step={1} height={200} disabled={!connected}
-                    onChange={(v) => { setBrightnessOverride(Math.round(v)); livePublish(buildBrightnessCmd('flame', Math.round(v))); }}
+                    onChange={(v) => livePublish(buildBrightnessCmd('flame', Math.round(v)), () => setBrightnessOverride(Math.round(v)))}
                     onCommit={(v) => { setBrightnessOverride(Math.round(v)); publish(buildBrightnessCmd('flame', Math.round(v))); }} />
                 </View>
                 <Text style={styles.hint}>How bright the flame lights glow.</Text>
