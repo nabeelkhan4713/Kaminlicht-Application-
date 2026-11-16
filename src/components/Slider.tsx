@@ -1,28 +1,24 @@
 /**
- * Slider — thin wrapper around the native OS slider (@react-native-community/slider),
- * the same control phones use for volume / brightness. It drags smoothly and reliably
- * on real hardware (no manual touch math).
- *
- * We keep the UI live while dragging (onValueChange) but only send to the device on
- * release (onSlidingComplete) so we don't flood MQTT mid-drag.
+ * Slider — responsive horizontal slider (PanResponder, captures the gesture before
+ * the parent ScrollView so it tracks your finger instantly). Drag updates live;
+ * the value is committed on release so MQTT isn't flooded mid-drag.
  */
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import RNSlider from '@react-native-community/slider';
+import { useRef, useState } from 'react';
+import { PanResponder, StyleSheet, Text, View } from 'react-native';
 
 interface SliderProps {
-  value: number;                       // current value (min..max)
+  value: number;
   min?: number;
   max?: number;
   step?: number;
   disabled?: boolean;
-  label?: string;                      // left caption, e.g. "Brightness"
-  formatValue?: (v: number) => string; // right caption, e.g. (v) => `${v}%`
-  onChange?: (v: number) => void;      // fires continuously while dragging (UI only)
-  onCommit: (v: number) => void;       // fires once on release (send to device)
+  label?: string;
+  formatValue?: (v: number) => string;
+  onChange?: (v: number) => void;
+  onCommit: (v: number) => void;
 }
 
-const ACCENT = '#ea580c';
+const ACCENT = '#f97316';
 
 export default function Slider({
   value,
@@ -35,47 +31,106 @@ export default function Slider({
   onChange,
   onCommit,
 }: SliderProps) {
-  // While the user drags, show the live finger value instead of the device value.
-  const [dragValue, setDragValue] = useState<number | null>(null);
-  const shown = dragValue ?? value;
-  const clampedShown = Math.max(min, Math.min(max, shown));
+  const ref = useRef<View | null>(null);
+  const leftRef = useRef(0);
+  const widthRef = useRef(1);
+  const [drag, setDrag] = useState<number | null>(null);
+
+  const shown = drag ?? value;
+  const clamped = Math.max(min, Math.min(max, shown));
+  const pct = ((clamped - min) / (max - min)) * 100;
+
+  const valueFromPageX = (pageX: number) => {
+    const ratio = (pageX - leftRef.current) / Math.max(1, widthRef.current);
+    const raw = min + ratio * (max - min);
+    const stepped = Math.round(raw / step) * step;
+    return Math.max(min, Math.min(max, stepped));
+  };
+  const measure = (after?: () => void) =>
+    ref.current?.measureInWindow((x, _y, w) => {
+      leftRef.current = x;
+      if (w) widthRef.current = w;
+      after?.();
+    });
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !disabled,
+      onStartShouldSetPanResponderCapture: () => !disabled,
+      onMoveShouldSetPanResponder: () => !disabled,
+      onMoveShouldSetPanResponderCapture: () => !disabled,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => {
+        const px = e.nativeEvent.pageX;
+        measure(() => {
+          const v = valueFromPageX(px);
+          setDrag(v);
+          onChange?.(v);
+        });
+      },
+      onPanResponderMove: (e) => {
+        const v = valueFromPageX(e.nativeEvent.pageX);
+        setDrag(v);
+        onChange?.(v);
+      },
+      onPanResponderRelease: () =>
+        setDrag((cur) => {
+          if (cur != null) onCommit(cur);
+          return null;
+        }),
+      onPanResponderTerminate: () =>
+        setDrag((cur) => {
+          if (cur != null) onCommit(cur);
+          return null;
+        }),
+    }),
+  ).current;
 
   return (
     <View style={styles.wrap}>
       {(label != null || formatValue != null) && (
         <View style={styles.header}>
           {label != null && <Text style={styles.label}>{label}</Text>}
-          {formatValue != null && <Text style={styles.value}>{formatValue(clampedShown)}</Text>}
+          {formatValue != null && <Text style={styles.value}>{formatValue(clamped)}</Text>}
         </View>
       )}
-      <RNSlider
-        style={styles.slider}
-        minimumValue={min}
-        maximumValue={max}
-        step={step}
-        value={clampedShown}
-        disabled={disabled}
-        minimumTrackTintColor={disabled ? '#d4d4d8' : ACCENT}
-        maximumTrackTintColor="#e4e4e7"
-        thumbTintColor={disabled ? '#d4d4d8' : ACCENT}
-        onValueChange={(v) => {
-          setDragValue(v);
-          onChange?.(v);
-        }}
-        onSlidingComplete={(v) => {
-          setDragValue(null);
-          onCommit(v);
-        }}
-      />
+      <View
+        ref={ref}
+        onLayout={() => measure()}
+        style={[styles.touch, disabled && styles.disabled]}
+        {...responder.panHandlers}
+      >
+        <View style={styles.track}>
+          <View style={[styles.fill, { width: `${pct}%` }]} />
+        </View>
+        <View style={[styles.thumb, { left: `${pct}%` }]} pointerEvents="none" />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 6, paddingVertical: 4 },
+  wrap: { gap: 8, paddingVertical: 4 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  label: { fontSize: 15, color: '#444', fontWeight: '600' },
+  label: { fontSize: 15, color: '#c9bcb3', fontWeight: '600' },
   value: { fontSize: 15, color: ACCENT, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  // Native slider gets a tall touch area on Android automatically; give it room.
-  slider: { width: '100%', height: 40 },
+  touch: { height: 44, justifyContent: 'center' },
+  track: { height: 10, borderRadius: 5, backgroundColor: '#3a322d', overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 5, backgroundColor: ACCENT },
+  thumb: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginLeft: -14,
+    backgroundColor: '#fff',
+    borderWidth: 3,
+    borderColor: ACCENT,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  disabled: { opacity: 0.4 },
 });

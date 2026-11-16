@@ -72,7 +72,10 @@ export default function RotaryDial({
   const responder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => !disabled,
+      onStartShouldSetPanResponderCapture: () => !disabled,
       onMoveShouldSetPanResponder: () => !disabled,
+      onMoveShouldSetPanResponderCapture: () => !disabled,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
         const { pageX, pageY } = e.nativeEvent;
         measure(() => {

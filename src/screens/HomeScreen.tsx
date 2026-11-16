@@ -35,6 +35,10 @@ import {
   useAudioVolume,
   useAudioTrackIndex,
   useSleepRemaining,
+  useBlower1On,
+  useBlower1Speed,
+  useBlower2On,
+  useBlower2Speed,
 } from '../hooks/useDeviceTelemetry';
 import {
   buildPowerCmd,
@@ -48,6 +52,8 @@ import {
   buildVolumeCmd,
   buildTrackCmd,
   buildSleepTimerCmd,
+  buildBlowerPowerCmd,
+  buildBlowerSpeedCmd,
 } from '../types/commands';
 import { ColorPresetStorage, type ColorPreset } from '../services/ColorPresetStorage';
 
@@ -94,6 +100,11 @@ export default function HomeScreen() {
   const audioVolume = useAudioVolume();
   const audioTrackIndex = useAudioTrackIndex();
   const sleepRemaining = useSleepRemaining();
+  const blower1On = useBlower1On();
+  const blower1Speed = useBlower1Speed();
+  const blower2On = useBlower2On();
+  const blower2Speed = useBlower2Speed();
+  const blowerCount = manifest?.capabilities.blowers.count ?? 0;
   const flame = useDeviceTelemetry((t) => t?.lighting?.flame ?? null);
   const publish = usePublish();
   const publishWithAck = usePublishWithAck();
@@ -168,6 +179,29 @@ export default function HomeScreen() {
                   </Pressable>
                 ))}
               </View>
+            )}
+
+            {/* Vapour (mist maker): ON = full, OFF = off */}
+            <View style={styles.divider} />
+            <View style={styles.rowBetween}>
+              <Text style={styles.rowLabel}>Vapour</Text>
+              <TogglePill on={vaporOn} disabled={!connected} onPress={toggleFlame} />
+            </View>
+            <Text style={styles.hint}>On runs the mist at full; off stops it.</Text>
+
+            {/* Blowers: on/off + speed slider */}
+            {blowerCount > 0 && (
+              <>
+                <View style={styles.divider} />
+                <BlowerControl id={1} on={blower1On} speed={blower1Speed} disabled={!connected}
+                  onToggle={(v) => void publishWithAck(buildBlowerPowerCmd(1, v), 6000)}
+                  onSpeed={(p) => publish(buildBlowerSpeedCmd(1, p))} />
+                {blowerCount > 1 && (
+                  <BlowerControl id={2} on={blower2On} speed={blower2Speed} disabled={!connected}
+                    onToggle={(v) => void publishWithAck(buildBlowerPowerCmd(2, v), 6000)}
+                    onSpeed={(p) => publish(buildBlowerSpeedCmd(2, p))} />
+                )}
+              </>
             )}
           </View>
         ) : (
@@ -384,6 +418,28 @@ function RoundBtn({ glyph, big, accent, disabled, onPress }: { glyph: string; bi
   );
 }
 
+function TogglePill({ on, disabled, onPress }: { on: boolean; disabled: boolean; onPress: () => void }) {
+  return (
+    <Pressable disabled={disabled} onPress={onPress} style={[styles.pill, on && styles.pillOn, disabled && styles.dim]}>
+      <Text style={styles.pillText}>{on ? 'ON' : 'OFF'}</Text>
+    </Pressable>
+  );
+}
+
+function BlowerControl({ id, on, speed, disabled, onToggle, onSpeed }: {
+  id: number; on: boolean; speed: number; disabled: boolean; onToggle: (v: boolean) => void; onSpeed: (p: number) => void;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={styles.rowBetween}>
+        <Text style={styles.rowLabel}>Blower {id}</Text>
+        <TogglePill on={on} disabled={disabled} onPress={() => onToggle(!on)} />
+      </View>
+      <Slider value={speed} min={0} max={100} disabled={disabled || !on} formatValue={(v) => `${Math.round(v)}%`} onCommit={onSpeed} />
+    </View>
+  );
+}
+
 function SegmentTab({ label, active, on, onSelect, onToggle, disabled }: {
   label: string; active: boolean; on: boolean; onSelect: () => void; onToggle: () => void; disabled: boolean;
 }) {
@@ -472,6 +528,13 @@ const styles = StyleSheet.create({
   presetName: { color: '#fff', fontWeight: '700', fontSize: 13 },
   saveSlot: { borderWidth: 1, borderColor: '#3a322d', borderStyle: 'dashed', borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, justifyContent: 'center' },
   saveText: { color: '#8a7f78', fontWeight: '700', fontSize: 13 },
+
+  divider: { height: 1, backgroundColor: '#241d19', marginVertical: 2 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  rowLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  pill: { paddingVertical: 7, paddingHorizontal: 20, borderRadius: 999, backgroundColor: '#3a322d' },
+  pillOn: { backgroundColor: ACCENT },
+  pillText: { color: '#fff', fontWeight: '800' },
 
   presetRow: { flexDirection: 'row', gap: 10 },
   chip: { flex: 1, backgroundColor: '#241d19', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },

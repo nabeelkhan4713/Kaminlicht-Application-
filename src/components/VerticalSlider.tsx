@@ -58,8 +58,13 @@ export default function VerticalSlider({
 
   const responder = useRef(
     PanResponder.create({
+      // Capture the touch before the parent ScrollView, so a vertical drag moves
+      // the slider instead of scrolling the page (that was the "slow to catch" feel).
       onStartShouldSetPanResponder: () => !disabled,
+      onStartShouldSetPanResponderCapture: () => !disabled,
       onMoveShouldSetPanResponder: () => !disabled,
+      onMoveShouldSetPanResponderCapture: () => !disabled,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
         const py = e.nativeEvent.pageY;
         measure(() => {
