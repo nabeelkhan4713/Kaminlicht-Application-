@@ -583,7 +583,13 @@ void startMqtt() {
   T_MAN = "kl/" + sn + "/manifest"; T_ACK = "kl/" + sn + "/ack";
   WiFi.setSleep(false);
   Serial.print(">>> ESP32 IP: "); Serial.println(WiFi.localIP());
-  if (MDNS.begin(MDNS_HOST)) Serial.printf(">>> mDNS: %s.local\n", MDNS_HOST);
+  if (MDNS.begin(MDNS_HOST)) {
+    Serial.printf(">>> mDNS: %s.local\n", MDNS_HOST);
+    // Advertise a discoverable service so the app can auto-find this fireplace on the
+    // LAN by type (no hardcoded IP). TXT 'serial' lets the app match the right unit.
+    MDNS.addService("glowfire", "tcp", 9001);
+    MDNS.addServiceTxt("glowfire", "tcp", "serial", SERIAL_NO);
+  }
   mqtt.subscribe(T_CMD, onCommand);
   mqtt.begin();
   mqttStarted = true;
