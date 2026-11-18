@@ -40,11 +40,18 @@ export default function Slider({
   const clamped = Math.max(min, Math.min(max, shown));
   const pct = ((clamped - min) / (max - min)) * 100;
 
+  // Keep the latest props in a ref so the (once-created) PanResponder never acts on a
+  // stale `disabled`/callback. Without this, a slider that started disabled (e.g. the
+  // blower slider while the blower is off) would stay unresponsive after being enabled.
+  const latest = useRef({ disabled, min, max, step, onChange, onCommit });
+  latest.current = { disabled, min, max, step, onChange, onCommit };
+
   const valueFromPageX = (pageX: number) => {
+    const p = latest.current;
     const ratio = (pageX - leftRef.current) / Math.max(1, widthRef.current);
-    const raw = min + ratio * (max - min);
-    const stepped = Math.round(raw / step) * step;
-    return Math.max(min, Math.min(max, stepped));
+    const raw = p.min + ratio * (p.max - p.min);
+    const stepped = Math.round(raw / p.step) * p.step;
+    return Math.max(p.min, Math.min(p.max, stepped));
   };
   const measure = (after?: () => void) =>
     ref.current?.measureInWindow((x, _y, w) => {
@@ -55,32 +62,32 @@ export default function Slider({
 
   const responder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !disabled,
-      onStartShouldSetPanResponderCapture: () => !disabled,
-      onMoveShouldSetPanResponder: () => !disabled,
-      onMoveShouldSetPanResponderCapture: () => !disabled,
+      onStartShouldSetPanResponder: () => !latest.current.disabled,
+      onStartShouldSetPanResponderCapture: () => !latest.current.disabled,
+      onMoveShouldSetPanResponder: () => !latest.current.disabled,
+      onMoveShouldSetPanResponderCapture: () => !latest.current.disabled,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
         const px = e.nativeEvent.pageX;
         measure(() => {
           const v = valueFromPageX(px);
           setDrag(v);
-          onChange?.(v);
+          latest.current.onChange?.(v);
         });
       },
       onPanResponderMove: (e) => {
         const v = valueFromPageX(e.nativeEvent.pageX);
         setDrag(v);
-        onChange?.(v);
+        latest.current.onChange?.(v);
       },
       onPanResponderRelease: () =>
         setDrag((cur) => {
-          if (cur != null) onCommit(cur);
+          if (cur != null) latest.current.onCommit(cur);
           return null;
         }),
       onPanResponderTerminate: () =>
         setDrag((cur) => {
-          if (cur != null) onCommit(cur);
+          if (cur != null) latest.current.onCommit(cur);
           return null;
         }),
     }),
