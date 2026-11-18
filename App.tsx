@@ -17,7 +17,6 @@ import { DeviceProvider, useManifest } from './src/contexts/DeviceContext';
 import { DeviceSessionProvider, useDeviceSession } from './src/contexts/DeviceSessionContext';
 import { bleService } from './src/services/BLEService';
 import RootNavigator from './src/navigation/RootNavigator';
-import { useDiscoveredHost } from './src/hooks/useDiscoveredHost';
 import { DEVICE } from './src/config';
 
 // Initialise the BLE native module once at startup (Roadmap Task 1.2 → "BleManager created").
@@ -42,22 +41,17 @@ function ConnectedApp() {
   const { device } = useDeviceSession();
   const serialNumber = device?.serialNumber ?? DEVICE.serialNumber;
 
-  // Auto-discover the fireplace on the LAN by its mDNS service — its CURRENT IP, found
-  // live, so a DHCP change can't strand the app on a stale address.
-  const discoveredIp = useDiscoveredHost(serialNumber);
-
-  // Order: discovered IP (freshest) → saved IP → config IP fallbacks → mDNS name LAST
-  // (Android often can't resolve '.local' and the MQTT client can stall on it).
-  const hosts = Array.from(
-    new Set(
-      [discoveredIp, device?.ip, ...DEVICE.hosts, device?.host].filter((h): h is string => !!h),
-    ),
-  );
+  // Saved IP first (resolves instantly), then the config IP fallbacks, then the mDNS
+  // '.local' name LAST — Android often can't resolve '.local' and the MQTT client can
+  // stall on it. This is the connection path proven to work on the tablet.
+  const hosts = device
+    ? Array.from(new Set([...(device.ip ? [device.ip] : []), ...DEVICE.hosts, device.host]))
+    : DEVICE.hosts;
 
   return (
-    // Remount (reconnect) when the paired serial OR the primary host changes — so a
-    // freshly discovered IP is picked up by the live MQTT session.
-    <DeviceProvider key={`${serialNumber}@${hosts[0] ?? ''}`} connection={{ hosts, serialNumber, wsPort: DEVICE.wsPort }}>
+    // Keep the MQTT session stable across renders (remount only when the paired serial
+    // changes). mqtt.js cycles through `hosts` itself to find a reachable one.
+    <DeviceProvider key={serialNumber} connection={{ hosts, serialNumber, wsPort: DEVICE.wsPort }}>
       <DeviceIpSync />
       <NavigationContainer>
         <StatusBar style="light" />
