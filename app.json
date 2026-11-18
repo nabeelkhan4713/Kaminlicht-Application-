@@ -53,6 +53,14 @@
           ],
           "bluetoothAlwaysPermission": "Glow Fire uses Bluetooth to provision and connect to your fireplace controller."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
     ],
     "extra": {

@@ -364,6 +364,13 @@ export default function ProvisioningScreen({
         <Text style={styles.statusMessage}>{userMessage}</Text>
       </View>
 
+      {/* Always-visible Wi-Fi path: a fireplace already set up is on Wi-Fi, not Bluetooth,
+          so "Scan" can never find it. One tap here pairs over Wi-Fi (no Bluetooth needed). */}
+      <TouchableOpacity style={styles.btn} onPress={() => void persistPairing()}>
+        <Text style={styles.btnText}>Connect over Wi-Fi (already set up)</Text>
+      </TouchableOpacity>
+      <Text style={styles.statusMessage}>Use this if your fireplace is already on Wi-Fi. For a brand-new fireplace, use Bluetooth setup below.</Text>
+
       {/* The fireplace is already on Wi-Fi and reporting telemetry — it will not be
           advertising over Bluetooth, so offer a way straight into the app instead of
           trapping the user on a scan that can never succeed (e.g. after reinstalling
