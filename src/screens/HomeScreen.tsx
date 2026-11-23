@@ -182,15 +182,23 @@ export default function HomeScreen() {
         {mode === 'heat' ? (
           <View style={styles.panel}>
             <Text style={styles.sectionLabel}>HEAT</Text>
-            <Text style={styles.hint}>{heaterOn ? 'Heater is running.' : 'Turn on Heat above to warm the room.'}</Text>
+            {/* Clear heater on/off (same as the Heat toggle up top, but obvious here) */}
+            <View style={styles.rowBetween}>
+              <Text style={styles.rowLabel}>Heater</Text>
+              <TogglePill on={heaterOn} disabled={!connected} onPress={toggleHeat} />
+            </View>
+            <Text style={styles.hint}>{heaterOn ? 'Heater is running.' : 'Turn the heater on to warm the room.'}</Text>
             {heaterOn && (manifest?.capabilities.climate.stages ?? 0) >= 2 && (
-              <View style={styles.presetRow}>
-                {[1, 2].map((s) => (
-                  <Pressable key={s} style={[styles.chip, heaterStage === s && styles.chipActive]} disabled={!connected} onPress={() => void publishWithAck(buildHeaterStageCmd(s as 1 | 2), 6000)}>
-                    <Text style={[styles.chipText, heaterStage === s && styles.chipTextActive]}>{s === 1 ? '1000 W' : '2000 W'}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              <>
+                <Text style={styles.subLabel}>Power level</Text>
+                <View style={styles.presetRow}>
+                  {[1, 2].map((s) => (
+                    <Pressable key={s} style={[styles.chip, heaterStage === s && styles.chipActive]} disabled={!connected} onPress={() => void publishWithAck(buildHeaterStageCmd(s as 1 | 2), 6000)}>
+                      <Text style={[styles.chipText, heaterStage === s && styles.chipTextActive]}>{s === 1 ? '1000 W' : '2000 W'}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
             )}
 
             {/* Vapour (mist maker): ON = full, OFF = off */}
@@ -434,6 +442,7 @@ function RoundBtn({ glyph, big, accent, disabled, onPress }: { glyph: string; bi
 
 function TogglePill({ on, disabled, onPress }: { on: boolean; disabled: boolean; onPress: () => void }) {
   return (
+    
     <Pressable disabled={disabled} onPress={onPress} style={[styles.pill, on && styles.pillOn, disabled && styles.dim]}>
       <Text style={styles.pillText}>{on ? 'ON' : 'OFF'}</Text>
     </Pressable>
@@ -574,3 +583,4 @@ const styles = StyleSheet.create({
   emptyHint: { color: '#6b6058', fontSize: 14, textAlign: 'center', marginTop: 8 },
   dim: { opacity: 0.4 },
 });
+
