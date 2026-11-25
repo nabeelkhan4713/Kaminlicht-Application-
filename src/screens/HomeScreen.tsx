@@ -51,6 +51,7 @@ import {
   buildAudioPowerCmd,
   buildVolumeCmd,
   buildTrackCmd,
+  buildSetTrackCmd,
   buildSleepTimerCmd,
   buildBlowerPowerCmd,
   buildBlowerSpeedCmd,
@@ -148,12 +149,29 @@ export default function HomeScreen() {
     vaporOn ? void publishWithAck(buildVaporPowerCmd(false), 6000) : void publishWithAck(buildVaporIntensityCmd(intensity), 6000);
   const toggleHeat = () => void publishWithAck(buildHeaterPowerCmd(!heaterOn), 6000);
 
+  // Save the whole current mood: colour + brightness + flame intensity + the playing sound.
   const saveCurrent = async (name: string) => {
     const { r, g, b } = hexToRgb(currentHex);
     const label = name.trim() || `Custom ${custom.length + 1}`;
-    const next = [...custom, { id: `c-${Date.now()}`, name: label, color: { r, g, b } }].slice(-8);
+    const scene: ColorPreset = {
+      id: `c-${Date.now()}`,
+      name: label,
+      color: { r, g, b },
+      brightness: Math.round(brightness),
+      intensity,
+      track: audioOn ? (audioTrackIndex ?? 0) : undefined, // only capture a sound if one is playing
+    };
+    const next = [...custom, scene].slice(-8);
     setCustom(next);
     await ColorPresetStorage.save(serial, next);
+  };
+
+  // Apply a saved scene: colour, then brightness / flame intensity / sound if the preset has them.
+  const applyScene = (p: ColorPreset) => {
+    applyColor(rgbToHex(p.color.r, p.color.g, p.color.b));
+    if (p.brightness != null) { setBrightnessOverride(p.brightness); publish(buildBrightnessCmd('flame', p.brightness)); }
+    if (p.intensity != null) { setIntensityOverride(p.intensity); publish(buildVaporIntensityCmd(p.intensity)); }
+    if (p.track != null) void publishWithAck(buildSetTrackCmd(p.track), 6000);
   };
   const deletePreset = async (id: string) => {
     const next = custom.filter((p) => p.id !== id);
@@ -307,7 +325,7 @@ export default function HomeScreen() {
                 <View style={styles.presetWrap}>
                   {custom.map((p) => (
                     <Pressable key={p.id} disabled={!connected} style={styles.presetPill}
-                      onPress={() => applyColor(rgbToHex(p.color.r, p.color.g, p.color.b))}
+                      onPress={() => applyScene(p)}
                       onLongPress={() => void deletePreset(p.id)}>
                       <View style={[styles.presetDot, { backgroundColor: rgbToHex(p.color.r, p.color.g, p.color.b) }]} />
                       <Text style={styles.presetName}>{p.name}</Text>
@@ -319,7 +337,7 @@ export default function HomeScreen() {
                     </Pressable>
                   )}
                 </View>
-                <Text style={styles.hint}>Saves the colour on the flame now. Long-press a custom preset to delete.</Text>
+                <Text style={styles.hint}>Saves the current mood — colour, brightness, flame & sound. Long-press a custom preset to delete.</Text>
               </View>
             )}
 
@@ -385,7 +403,7 @@ export default function HomeScreen() {
             <Text style={styles.modalTitle}>Name your preset</Text>
             <View style={styles.modalColorRow}>
               <View style={[styles.presetDot, { width: 28, height: 28, borderRadius: 14, backgroundColor: currentHex }]} />
-              <Text style={styles.modalColorLabel}>Saves the current flame colour</Text>
+              <Text style={styles.modalColorLabel}>Saves colour, brightness, flame & the playing sound</Text>
             </View>
             <TextInput
               value={presetName}

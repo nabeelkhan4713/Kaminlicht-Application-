@@ -547,6 +547,12 @@ void onCommand(const char* topic, const char* payload) {
       if (!strcmp(dir, "next")) { dfPlayer.next(); audioTrackIndex++; }
       else if (!strcmp(dir, "prev")) { dfPlayer.previous(); if (audioTrackIndex > 0) audioTrackIndex--; }
       isPlaying = true;
+    } else if (!strcmp(action, "set_track")) {
+      int n = doc["value"] | 0;                 // 0-based index from the app
+      if (n < 0) n = 0;
+      audioTrackIndex = n;
+      dfPlayer.play(n + 1);                      // DFPlayer files are 1-based
+      isPlaying = true;
     }
 
   } else if (!strcmp(module, "climate")) {                     // two 1000W heaters (+ safety fan)

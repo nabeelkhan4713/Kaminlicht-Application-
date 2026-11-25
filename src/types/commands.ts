@@ -92,6 +92,10 @@ export const buildVolumeCmd = (volume: number, maxSteps = 10) => {
 };
 export const buildTrackCmd = (direction: 'next' | 'prev') =>
   cmd({ module: 'audio', action: 'track', value: direction });
+export const buildSetTrackCmd = (track: number) => {
+  assertRange('track', track, 0, 999);
+  return cmd({ module: 'audio', action: 'set_track', value: Math.round(track) });
+};
 
 // ---- Exhaust Fan (FR-FAN) ----
 export const buildFanSpeedCmd = (speed: FanSpeed) =>
