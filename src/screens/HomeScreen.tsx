@@ -120,6 +120,10 @@ export default function HomeScreen() {
   const [timerMin, setTimerMin] = useState(60);
   const [saveOpen, setSaveOpen] = useState(false);
   const [presetName, setPresetName] = useState('');
+  // Which parts of the current mood to include when saving a preset.
+  const [incBrightness, setIncBrightness] = useState(true);
+  const [incFlame, setIncFlame] = useState(true);
+  const [incSound, setIncSound] = useState(true);
 
   useEffect(() => {
     void ColorPresetStorage.load(serial).then(setCustom);
@@ -157,9 +161,9 @@ export default function HomeScreen() {
       id: `c-${Date.now()}`,
       name: label,
       color: { r, g, b },
-      brightness: Math.round(brightness),
-      intensity,
-      track: audioOn ? (audioTrackIndex ?? 0) : undefined, // only capture a sound if one is playing
+      brightness: incBrightness ? Math.round(brightness) : undefined,
+      intensity: incFlame ? intensity : undefined,
+      track: incSound && audioOn ? (audioTrackIndex ?? 0) : undefined,
     };
     const next = [...custom, scene].slice(-8);
     setCustom(next);
@@ -332,7 +336,7 @@ export default function HomeScreen() {
                     </Pressable>
                   ))}
                   {custom.length < 8 && (
-                    <Pressable style={styles.saveSlot} onPress={() => { setPresetName(''); setSaveOpen(true); }}>
+                    <Pressable style={styles.saveSlot} onPress={() => { setPresetName(''); setIncBrightness(true); setIncFlame(true); setIncSound(true); setSaveOpen(true); }}>
                       <Text style={styles.saveText}>＋ Save current colour</Text>
                     </Pressable>
                   )}
@@ -400,11 +404,33 @@ export default function HomeScreen() {
       <Modal visible={saveOpen} transparent animationType="fade" onRequestClose={() => setSaveOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Name your preset</Text>
-            <View style={styles.modalColorRow}>
-              <View style={[styles.presetDot, { width: 28, height: 28, borderRadius: 14, backgroundColor: currentHex }]} />
-              <Text style={styles.modalColorLabel}>Saves colour, brightness, flame & the playing sound</Text>
+            <Text style={styles.modalTitle}>Save this scene</Text>
+
+            {/* Colour — always included */}
+            <View style={styles.sceneRow}>
+              <View style={[styles.presetDot, { width: 26, height: 26, borderRadius: 13, backgroundColor: currentHex }]} />
+              <Text style={styles.sceneLabel}>Colour</Text>
+              <Text style={styles.sceneValue}>always</Text>
             </View>
+            {/* Brightness */}
+            <View style={styles.sceneRow}>
+              <Text style={{ fontSize: 18 }}>☀️</Text>
+              <Text style={styles.sceneLabel}>Brightness <Text style={styles.sceneValue}>{Math.round(brightness)}%</Text></Text>
+              <TogglePill on={incBrightness} disabled={false} onPress={() => setIncBrightness((v) => !v)} />
+            </View>
+            {/* Flame intensity */}
+            <View style={styles.sceneRow}>
+              <Text style={{ fontSize: 18 }}>🔥</Text>
+              <Text style={styles.sceneLabel}>Flame <Text style={styles.sceneValue}>level {intensity}</Text></Text>
+              <TogglePill on={incFlame} disabled={false} onPress={() => setIncFlame((v) => !v)} />
+            </View>
+            {/* Sound — only if something is playing */}
+            <View style={styles.sceneRow}>
+              <Text style={{ fontSize: 18 }}>🎵</Text>
+              <Text style={styles.sceneLabel}>Sound <Text style={styles.sceneValue}>{audioOn ? audioName(audioTrackIndex ?? 0) : 'nothing playing'}</Text></Text>
+              <TogglePill on={incSound && audioOn} disabled={!audioOn} onPress={() => setIncSound((v) => !v)} />
+            </View>
+
             <TextInput
               value={presetName}
               onChangeText={setPresetName}
@@ -556,6 +582,9 @@ const styles = StyleSheet.create({
   modalTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
   modalColorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   modalColorLabel: { color: '#8a7f78', fontSize: 13 },
+  sceneRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  sceneLabel: { color: '#fff', fontSize: 15, flex: 1 },
+  sceneValue: { color: '#8a7f78', fontSize: 14, fontWeight: '400' },
   modalInput: { backgroundColor: '#241d19', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: '#fff', fontSize: 15 },
   modalBtns: { flexDirection: 'row', gap: 12 },
   modalCancel: { flex: 1, backgroundColor: '#241d19', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
