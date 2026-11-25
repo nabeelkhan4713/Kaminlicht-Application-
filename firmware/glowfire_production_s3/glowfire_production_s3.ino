@@ -105,10 +105,9 @@ bool sleepTimerActive = false;
 unsigned long sleepTimerEndMs = 0;
 
 // ---------- WS2805 LED strips (3) ----------
-const uint16_t LED_COUNT = 500;                 // LEDs per strip. Set HIGHER than the real
-// count so every LED is addressed — a strip ignores data past its last LED (harmless), but
-// any LED beyond LED_COUNT gets NO data and shows a stale/wrong colour. 500 covers any
-// realistic strip; raise it if the far end still shows a stray colour.
+const uint16_t LED_COUNT = 150;                 // LEDs per strip. Keep this close to the real
+// strip length: too LOW leaves the far end uncoloured; too HIGH (e.g. 500) makes every colour
+// refresh ~3x slower and the colour wheel lags. Raise only if the far end stays dark.
 const uint32_t WS2805_RMT_FREQUENCY_HZ = 10000000UL;
 const uint16_t WS2805_T0H_TICKS = 3, WS2805_T0L_TICKS = 10;
 const uint16_t WS2805_T1H_TICKS = 7, WS2805_T1L_TICKS = 6;
